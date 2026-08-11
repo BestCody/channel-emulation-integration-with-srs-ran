@@ -13,18 +13,94 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 360
     steps:
-      - name: Inspect receiver patch and call path
+      - name: Prepare experiment code
         shell: bash
         run: |
           set -euo pipefail
           ROOT="$HOME/sionna-srsran"
           NRX="$ROOT/neural_rx"
-          echo "--- local neural_rx diff ---"
-          git -C "$NRX" diff -- utils/neural_rx.py || true
-          echo "--- NeuralPUSCHReceiver locations ---"
-          grep -n "class NeuralPUSCHReceiver\|def call\|_neural_rx" "$NRX/utils/neural_rx.py" | tail -n 80
-          echo "--- receiver wrapper region ---"
-          LINE=$(grep -n "class NeuralPUSCHReceiver" "$NRX/utils/neural_rx.py" | head -1 | cut -d: -f1)
-          START=$((LINE-20)); END=$((LINE+500)); sed -n "${START},${END}p" "$NRX/utils/neural_rx.py"
-          echo "--- E2E receiver construction ---"
-          grep -n "NeuralPUSCHReceiver\|CGNNOFDM\|receiver" "$NRX/utils/e2e_model.py" | head -n 120
+          STUDY="$ROOT/temporal_reuse"
+          PY="$HOME/miniforge3/envs/neural_rx/bin/python"
+          OUT="$STUDY/edge_memory/run_${GITHUB_RUN_ID}"
+          mkdir -p "$OUT"
+          echo "$OUT" > "$HOME/.temporal_edge_latest_run"
+          git -C "$NRX" fetch origin experiment/temporal-edge-memory
+          git -C "$NRX" show origin/experiment/temporal-edge-memory:scripts/temporal_edge_memory_experiment.py > "$STUDY/edge_memory_experiment.py"
+          git -C "$NRX" show origin/experiment/temporal-edge-memory:scripts/summarize_temporal_edge_memory.py > "$STUDY/summarize_edge_memory.py"
+          "$PY" -m py_compile "$STUDY/edge_memory_experiment.py" "$STUDY/summarize_edge_memory.py"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+          echo "PY=$PY" >> "$GITHUB_ENV"
+          echo "NRX=$NRX" >> "$GITHUB_ENV"
+          echo "STUDY=$STUDY" >> "$GITHUB_ENV"
+          nvidia-smi
+
+      - name: Train and evaluate dE sweep on both A40s
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_variant() {
+            local d="$1"
+            local gpu="$2"
+            echo "===== START dE=$d GPU=$gpu ====="
+            (
+              cd "$NRX/scripts"
+              "$PY" "$STUDY/edge_memory_experiment.py" \
+                --d-edge "$d" \
+                --gpu "$gpu" \
+                --num-it 2 \
+                --train-steps 6000 \
+                --edge-only-steps 1500 \
+                --train-batch 8 \
+                --train-seq-len 4 \
+                --eval-batch 16 \
+                --eval-target-errors 120 \
+                --eval-max-batches 24 \
+                --seed 20260811 \
+                --output-dir "$OUT"
+            ) 2>&1 | tee "$OUT/dedge_${d}.log"
+            echo "===== DONE dE=$d GPU=$gpu ====="
+          }
+
+          # One model at a time per physical GPU; the two GPU chains run in parallel.
+          (
+            set -e
+            run_variant 1 0
+            run_variant 4 0
+          ) &
+          PID0=$!
+
+          (
+            set -e
+            run_variant 8 1
+            run_variant 16 1
+          ) &
+          PID1=$!
+
+          wait "$PID0"
+          wait "$PID1"
+
+      - name: Summarize accuracy latency and temporal-memory effect
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Results directory: $OUT"
+          if ls "$OUT"/eval_dedge_*.json >/dev/null 2>&1; then
+            "$PY" "$STUDY/summarize_edge_memory.py" \
+              --results-dir "$OUT" \
+              --baseline-json "$STUDY/results_merged.json" \
+              | tee "$OUT/comparison_summary.log"
+          fi
+          echo "--- result files ---"
+          find "$OUT" -maxdepth 1 -type f -printf '%f\n' | sort
+          echo "--- summary ---"
+          cat "$OUT/comparison_summary.json" 2>/dev/null || true
+
+      - name: Upload experiment results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: temporal-edge-memory-${{ github.run_id }}
+          path: ${{ env.OUT }}
+          if-no-files-found: warn
+          retention-days: 30

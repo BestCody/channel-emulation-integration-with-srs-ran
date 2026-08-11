@@ -30,7 +30,6 @@ jobs:
           test -x "$HOME/sionna-env/bin/python"
           "$HOME/sionna-env/bin/python" --version
           "$HOME/sionna-env/bin/python" - <<'PY'
-          import importlib
           import numpy
           import zmq
           import torch
@@ -54,18 +53,30 @@ jobs:
           command -v kubectl
           kubectl version --client
 
-      - name: Check Kubernetes cluster access
+      - name: Check Kubernetes cluster state
+        continue-on-error: true
         run: |
+          echo "--- node ---"
           kubectl get nodes -o wide
-          echo "--- storage class longhorn ---"
+          echo "--- storage classes ---"
+          kubectl get storageclass
+          echo "--- required storage class: longhorn ---"
           kubectl get storageclass longhorn
           echo "--- open5gs pods ---"
           kubectl get pods -n open5gs -o wide
 
+      - name: Check Open5GS pods even if storage check failed
+        if: always()
+        continue-on-error: true
+        run: |
+          kubectl get pods -n open5gs -o wide
+
       - name: Check out repository
+        if: always()
         uses: actions/checkout@v4
 
       - name: Verify project files
+        if: always()
         run: |
           test -d srsran_open5gs
           test -f srsran_open5gs/bin/evaluation-experiment.py

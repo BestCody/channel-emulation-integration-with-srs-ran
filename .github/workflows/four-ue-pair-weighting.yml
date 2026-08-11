@@ -38,6 +38,8 @@ jobs:
           set -euo pipefail
           cd "$NRX/scripts"
           "$PY" - <<'PY'
+          import sys
+          sys.path.insert(0, '..')
           from utils import Parameters, E2E_Model, load_weights
           p = Parameters('nrx_large_4ue.cfg', training=False, system='nrx')
           m = E2E_Model(p, training=False, mcs_arr_eval_idx=0)

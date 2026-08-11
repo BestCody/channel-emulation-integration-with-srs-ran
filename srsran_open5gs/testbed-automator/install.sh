@@ -209,20 +209,6 @@ install-helm() {
   fi
 }
 
-install-openebs() {
-  if kubectl get pods -n openebs -l app=openebs | grep -q '1/1'; then
-    cecho "YELLOW" "OpenEBS is already running. Skipping installation."
-  else
-    cecho "GREEN" "Installing OpenEBS for storage management ..."
-    helm repo add openebs https://openebs.github.io/charts
-    helm repo update
-    helm upgrade --install openebs --namespace openebs openebs/openebs --create-namespace
-
-    # patch k8s storageclass to make openebs-hostpath as default
-    kubectl patch storageclass openebs-hostpath -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
-  fi
-}
-
 setup-ovs-cni() {
   if [ -x "$(command -v ovs-vsctl)" ]; then
     cecho "YELLOW" "OpenVSwitch is already installed."

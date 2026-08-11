@@ -15,7 +15,10 @@ over **realistic radio channels** that are computed with ray tracing. It uses th
 - An **NVIDIA GPU** with recent drivers, CUDA, and the NVIDIA Container
   Toolkit
 - **Python 3.11 or newer** (`sionna` and `numpy` require it)
-- A Kubernetes storage class named **`longhorn`**
+- Local disk space for the MongoDB subscriber database. The included
+  Kubernetes manifest uses a static `hostPath` volume at
+  `/var/lib/mongo-pv/datadir-mongodb-0`; **Longhorn is not installed or
+  required**.
 
 ## Setting it up after cloning
 
@@ -66,12 +69,20 @@ kubectl get node -o jsonpath='{.items[0].status.allocatable.nvidia\.com/gpu}{"\n
 ```
 
 **3. Deploy the 5G core and the radio.**
-Apply as Kubernetes overlays:
+Apply as Kubernetes overlays. The MongoDB overlay includes the static 1 GiB
+persistent volume used for subscriber data, so no external storage provisioner
+is needed on this single-node testbed.
+
+The MongoDB manifests retain `storageClassName: longhorn` as a **legacy matching
+label** so existing deployments such as `atlas-gpu01` remain compatible. The
+volume itself is a normal Kubernetes `hostPath` volume, not a Longhorn volume.
+Do not delete an existing MongoDB PVC/PV just to rename that label; doing so can
+remove the saved Open5GS subscriber database.
 
 ```bash
 kubectl create namespace open5gs --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -n open5gs -k configs/open5gs/networks5g   # virtual networks
-kubectl apply -n open5gs -k configs/open5gs/mongodb       # subscriber database
+kubectl apply -n open5gs -k configs/open5gs/mongodb       # subscriber database + local PV
 kubectl apply -n open5gs -k configs/open5gs/open5gs       # 5G core network
 kubectl apply -n open5gs -k configs/srsRAN/srsran-gnb     # base station (gNB)
 kubectl apply -n open5gs -k configs/ues/srsue             # phone (UE)

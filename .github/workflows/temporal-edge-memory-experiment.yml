@@ -13,39 +13,24 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 360
     steps:
-      - name: Locate temporal NRX experiment assets
+      - name: Inspect temporal NRX experiment interface
         shell: bash
         run: |
           set -euo pipefail
+          PY="$HOME/miniforge3/envs/neural_rx/bin/python"
+          ROOT="$HOME/sionna-srsran"
+          test -x "$PY"
+          test -f "$ROOT/temporal_reuse/temporal_pipeline.py"
           echo "HOST=$(hostname)"
-          echo "HOME=$HOME"
-          echo "--- candidate project directories ---"
-          find "$HOME" -maxdepth 4 -type d \( -name 'temporal_reuse' -o -name 'nrx_iter_study' -o -name 'neural-rx-experiments' -o -name 'neural_rx' \) -print 2>/dev/null | sort
-          echo "--- candidate Python environments ---"
-          for p in "$HOME"/*/bin/python "$HOME"/miniconda3/envs/*/bin/python "$HOME"/anaconda3/envs/*/bin/python; do
-            [ -x "$p" ] || continue
-            echo "PYTHON=$p"
-            "$p" -c "import importlib; mods=['tensorflow','sionna','numpy']; [(lambda m: print(m, getattr(importlib.import_module(m),'__version__','unknown')))(m) for m in mods]" || true
-          done
-          echo "--- temporal files ---"
-          find "$HOME" -maxdepth 6 -type f \( -iname '*temporal*' -o -iname '*fusion*' -o -iname '*iter*study*' \) -print 2>/dev/null | head -n 300
-
-      - name: Inspect existing temporal experiment trees
-        shell: bash
-        run: |
-          set -euo pipefail
-          for d in \
-            "$HOME/sionna-srsran/temporal_reuse" \
-            "$HOME/temporal_reuse" \
-            "$HOME/neural-rx-experiments" \
-            "$HOME/sionna-srsran/neural_rx" \
-            "$HOME/neural_rx"; do
-            if [ -d "$d" ]; then
-              echo "===== $d ====="
-              find "$d" -maxdepth 3 -type f | sort | head -n 400
-              if [ -d "$d/.git" ]; then
-                git -C "$d" status --short --branch || true
-                git -C "$d" remote -v || true
-              fi
-            fi
-          done
+          "$PY" --version
+          "$PY" -c "import tensorflow as tf, sionna, numpy as np; print('tensorflow',tf.__version__); print('sionna',getattr(sionna,'__version__','unknown')); print('numpy',np.__version__); print('GPUs',tf.config.list_physical_devices('GPU'))"
+          echo "--- parent git state ---"
+          git -C "$ROOT" status --short --branch || true
+          echo "--- temporal pipeline ---"
+          sed -n '1,700p' "$ROOT/temporal_reuse/temporal_pipeline.py"
+          echo "--- staleness diagnostic ---"
+          sed -n '1,500p' "$ROOT/temporal_reuse/diagnose_staleness.py"
+          echo "--- temporal README ---"
+          cat "$ROOT/temporal_reuse/README.md"
+          echo "--- prior merged results ---"
+          cat "$ROOT/temporal_reuse/results_merged.json"

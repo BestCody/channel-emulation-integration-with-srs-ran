@@ -126,12 +126,10 @@ install-k8s() {
   if [ -x "$(command -v kubectl)" ] && [ -x "$(command -v kubeadm)" ] && [ -x "$(command -v kubelet)" ]; then
     cecho "YELLOW" "Kubernetes components (kubectl, kubeadm, kubelet) are already installed."
   else
-    cecho "GREEN" "Installing Kubernetes components (kubectl, kubeadm, kubelet) ..."
+    cecho "GREEN" "Installing Kubernetes components ..."
     sudo apt-get update
-    # apt-transport-https may be a dummy package
     sudo apt-get install -y apt-transport-https ca-certificates curl gpg
     curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-    # Overwrite Kubernetes Apt source
     echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
 
     sudo apt-get update
@@ -147,7 +145,6 @@ create-k8s-cluster() {
     cecho "GREEN" "Creating k8s cluster ..."
     sudo kubeadm init --config kubeadm-config.yaml
 
-    # Setup kubectl without sudo
     mkdir -p ${HOME}/.kube
     sudo cp -i /etc/kubernetes/admin.conf ${HOME}/.kube/config
     sudo chown $(id -u):$(id -g) ${HOME}/.kube/config
@@ -156,7 +153,6 @@ create-k8s-cluster() {
     cecho "YELLOW" "Waiting $timer secs for cluster to be ready"
     timer-sec $timer
 
-    # Remove NoSchedule taint from all nodes
     cecho "GREEN" "Allowing scheduling pods on master node ..."
     kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule-
   fi
@@ -170,7 +166,7 @@ install-cni() {
     cecho "GREEN" "Installing Flannel as primary CNI ..."
     kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
     timer-sec 60
-    kubectl wait pods -n kube-flannel  -l app=flannel --for condition=Ready --timeout=120s
+    kubectl wait pods -n kube-flannel -l app=flannel --for condition=Ready --timeout=120s
   fi
 }
 
@@ -184,10 +180,9 @@ install-multus() {
     cd build/multus-cni
     cat ./deployments/multus-daemonset-thick.yml | kubectl apply -f -
     timer-sec 30
-    kubectl wait pods -n kube-system  -l app=multus --for condition=Ready --timeout=120s
+    kubectl wait pods -n kube-system -l app=multus --for condition=Ready --timeout=120s
   fi
 }
-
 
 # Install Helm3
 install-helm() {
@@ -196,12 +191,10 @@ install-helm() {
   if [[ "$HELM_VERSION" != *"v3"* ]]; then
     cecho "GREEN" "Helm 3 is not installed. Proceeding to install Helm ..."
 
-    # Install Helm prerequisites
     curl -s https://baltocdn.com/helm/signing.asc | gpg --dearmor | sudo tee /usr/share/keyrings/helm.gpg > /dev/null
     sudo apt-get install apt-transport-https --yes
 
-    # Add Helm repository and install Helm
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
     sudo apt-get update
     sudo apt-get install helm
   else
@@ -223,19 +216,16 @@ setup-ovs-cni() {
   sudo ovs-vsctl --may-exist add-br n3br
   sudo ovs-vsctl --may-exist add-br n4br
 
-  # install ovs-cni and network-addons operator
   cecho "GREEN" "Installing ovs-cni ..."
 
   kubectl apply -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/v0.89.1/namespace.yaml
-  kubectl apply -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/v0.89.1/network-addons-config.crd.yaml 
+  kubectl apply -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/v0.89.1/network-addons-config.crd.yaml
   kubectl apply -f https://github.com/kubevirt/cluster-network-addons-operator/releases/download/v0.89.1/operator.yaml
 
   kubectl apply -f https://gist.githubusercontent.com/niloysh/1f14c473ebc08a18c4b520a868042026/raw/d96f07e241bb18d2f3863423a375510a395be253/network-addons-config.yaml
-  
+
   timer-sec 30
   kubectl wait networkaddonsconfig cluster --for condition=Available
-
-
 }
 
 # run-as-root

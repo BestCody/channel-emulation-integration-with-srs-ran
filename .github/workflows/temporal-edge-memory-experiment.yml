@@ -13,24 +13,18 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 360
     steps:
-      - name: Inspect temporal NRX experiment interface
+      - name: Inspect receiver patch and call path
         shell: bash
         run: |
           set -euo pipefail
-          PY="$HOME/miniforge3/envs/neural_rx/bin/python"
           ROOT="$HOME/sionna-srsran"
-          test -x "$PY"
-          test -f "$ROOT/temporal_reuse/temporal_pipeline.py"
-          echo "HOST=$(hostname)"
-          "$PY" --version
-          "$PY" -c "import tensorflow as tf, sionna, numpy as np; print('tensorflow',tf.__version__); print('sionna',getattr(sionna,'__version__','unknown')); print('numpy',np.__version__); print('GPUs',tf.config.list_physical_devices('GPU'))"
-          echo "--- parent git state ---"
-          git -C "$ROOT" status --short --branch || true
-          echo "--- temporal pipeline ---"
-          sed -n '1,700p' "$ROOT/temporal_reuse/temporal_pipeline.py"
-          echo "--- staleness diagnostic ---"
-          sed -n '1,500p' "$ROOT/temporal_reuse/diagnose_staleness.py"
-          echo "--- temporal README ---"
-          cat "$ROOT/temporal_reuse/README.md"
-          echo "--- prior merged results ---"
-          cat "$ROOT/temporal_reuse/results_merged.json"
+          NRX="$ROOT/neural_rx"
+          echo "--- local neural_rx diff ---"
+          git -C "$NRX" diff -- utils/neural_rx.py || true
+          echo "--- NeuralPUSCHReceiver locations ---"
+          grep -n "class NeuralPUSCHReceiver\|def call\|_neural_rx" "$NRX/utils/neural_rx.py" | tail -n 80
+          echo "--- receiver wrapper region ---"
+          LINE=$(grep -n "class NeuralPUSCHReceiver" "$NRX/utils/neural_rx.py" | head -1 | cut -d: -f1)
+          START=$((LINE-20)); END=$((LINE+500)); sed -n "${START},${END}p" "$NRX/utils/neural_rx.py"
+          echo "--- E2E receiver construction ---"
+          grep -n "NeuralPUSCHReceiver\|CGNNOFDM\|receiver" "$NRX/utils/e2e_model.py" | head -n 120

@@ -58,10 +58,15 @@ jobs:
         run: |
           echo "--- node ---"
           kubectl get nodes -o wide
-          echo "--- storage classes ---"
-          kubectl get storageclass
-          echo "--- required storage class: longhorn ---"
-          kubectl get storageclass longhorn
+          echo "--- storage classes (informational) ---"
+          kubectl get storageclass || true
+          echo "--- MongoDB persistent storage ---"
+          kubectl get pv mongodb-longhorn-pv -o wide
+          kubectl get pvc datadir-mongodb-0 -n open5gs -o wide
+          HOST_PATH=$(kubectl get pv mongodb-longhorn-pv -o jsonpath='{.spec.hostPath.path}')
+          echo "MongoDB hostPath: $HOST_PATH"
+          test "$HOST_PATH" = "/var/lib/mongo-pv/datadir-mongodb-0"
+          echo "MongoDB uses a static hostPath PV; Longhorn is not required."
           echo "--- open5gs pods ---"
           kubectl get pods -n open5gs -o wide
 
@@ -81,5 +86,6 @@ jobs:
           test -d srsran_open5gs
           test -f srsran_open5gs/bin/evaluation-experiment.py
           test -f srsran_open5gs/experiments/studies/neural-base.json
+          test -f srsran_open5gs/configs/open5gs/mongodb/mongodb-pv.yaml
           echo "Project files found."
           git status --short --branch

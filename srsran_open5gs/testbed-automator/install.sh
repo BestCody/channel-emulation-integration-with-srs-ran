@@ -184,7 +184,7 @@ install-multus() {
     cd build/multus-cni
     cat ./deployments/multus-daemonset-thick.yml | kubectl apply -f -
     timer-sec 30
-    kubectl wait pods -n kube-system  -l app=multus --for condition=Ready --timeout=120s
+    kubectl wait pods -n kube-system  -l app=flannel --for condition=Ready --timeout=120s
   fi
 }
 
@@ -201,25 +201,11 @@ install-helm() {
     sudo apt-get install apt-transport-https --yes
 
     # Add Helm repository and install Helm
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/helm.gpg] https://baltocdn.com/helm/stable/debian/ all main" | sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
     sudo apt-get update
     sudo apt-get install helm
   else
     cecho "YELLOW" "Helm 3 is already installed."
-  fi
-}
-
-install-openebs() {
-  if kubectl get pods -n openebs -l app=openebs | grep -q '1/1'; then
-    cecho "YELLOW" "OpenEBS is already running. Skipping installation."
-  else
-    cecho "GREEN" "Installing OpenEBS for storage management ..."
-    helm repo add openebs https://openebs.github.io/charts
-    helm repo update
-    helm upgrade --install openebs --namespace openebs openebs/openebs --create-namespace
-
-    # patch k8s storageclass to make openebs-hostpath as default
-    kubectl patch storageclass openebs-hostpath -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
   fi
 }
 

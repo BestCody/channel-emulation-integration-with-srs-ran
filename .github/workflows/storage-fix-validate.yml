@@ -1,0 +1,30 @@
+name: Storage Fix Validation
+
+on:
+  push:
+    branches:
+      - fix/storage-docs
+
+jobs:
+  validate:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 10
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+
+      - name: Render MongoDB kustomization
+        run: |
+          kubectl kustomize srsran_open5gs/configs/open5gs/mongodb > /tmp/mongodb-rendered.yaml
+          grep -q 'name: mongodb-longhorn-pv' /tmp/mongodb-rendered.yaml
+          grep -q 'path: /var/lib/mongo-pv/datadir-mongodb-0' /tmp/mongodb-rendered.yaml
+
+      - name: Validate rendered Kubernetes YAML
+        run: |
+          kubectl apply --dry-run=client -f /tmp/mongodb-rendered.yaml >/dev/null
+
+      - name: Verify live PV matches documented backing
+        run: |
+          test "$(kubectl get pv mongodb-longhorn-pv -o jsonpath='{.spec.hostPath.path}')" = "/var/lib/mongo-pv/datadir-mongodb-0"
+          test "$(kubectl get pv mongodb-longhorn-pv -o jsonpath='{.spec.storageClassName}')" = "longhorn"
+          test "$(kubectl get pvc datadir-mongodb-0 -n open5gs -o jsonpath='{.status.phase}')" = "Bound"

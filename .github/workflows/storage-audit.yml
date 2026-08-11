@@ -39,6 +39,15 @@ jobs:
           echo '=== persistent volume claims, all namespaces ==='
           kubectl get pvc -A -o wide || true
 
+      - name: Inspect MongoDB PV backing
+        shell: bash
+        run: |
+          set +e
+          echo '=== MongoDB PV ==='
+          kubectl get pv mongodb-longhorn-pv -o yaml || true
+          echo '=== MongoDB PVC ==='
+          kubectl get pvc datadir-mongodb-0 -n open5gs -o yaml || true
+
       - name: Inspect Open5GS and srsRAN workload volumes
         shell: bash
         run: |

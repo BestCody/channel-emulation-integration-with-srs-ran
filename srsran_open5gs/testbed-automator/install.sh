@@ -184,7 +184,7 @@ install-multus() {
     cd build/multus-cni
     cat ./deployments/multus-daemonset-thick.yml | kubectl apply -f -
     timer-sec 30
-    kubectl wait pods -n kube-system  -l app=flannel --for condition=Ready --timeout=120s
+    kubectl wait pods -n kube-system  -l app=multus --for condition=Ready --timeout=120s
   fi
 }
 

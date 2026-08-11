@@ -25,16 +25,7 @@ jobs:
           for p in "$HOME"/*/bin/python "$HOME"/miniconda3/envs/*/bin/python "$HOME"/anaconda3/envs/*/bin/python; do
             [ -x "$p" ] || continue
             echo "PYTHON=$p"
-            "$p" - <<'PY' || true
-import importlib
-mods = ['tensorflow','sionna','numpy']
-for m in mods:
-    try:
-        x=importlib.import_module(m)
-        print(m, getattr(x,'__version__','unknown'))
-    except Exception as e:
-        print(m, 'MISSING', type(e).__name__)
-PY
+            "$p" -c "import importlib; mods=['tensorflow','sionna','numpy']; [(lambda m: print(m, getattr(importlib.import_module(m),'__version__','unknown')))(m) for m in mods]" || true
           done
           echo "--- temporal files ---"
           find "$HOME" -maxdepth 6 -type f \( -iname '*temporal*' -o -iname '*fusion*' -o -iname '*iter*study*' \) -print 2>/dev/null | head -n 300

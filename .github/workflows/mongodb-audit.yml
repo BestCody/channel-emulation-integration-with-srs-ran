@@ -1,0 +1,37 @@
+name: MongoDB Contents Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/mongodb-audit.yml'
+
+jobs:
+  mongodb-audit:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 10
+
+    steps:
+      - name: Inspect MongoDB contents read-only
+        shell: bash
+        run: |
+          set -e
+          echo '=== MongoDB pod ==='
+          kubectl get pod mongodb-0 -n open5gs -o wide
+
+          echo '=== Mongo shell available ==='
+          kubectl exec -n open5gs mongodb-0 -- sh -lc 'command -v mongosh || command -v mongo || true'
+
+          echo '=== Databases and collection counts ==='
+          kubectl exec -n open5gs mongodb-0 -- sh -lc '
+            if command -v mongosh >/dev/null 2>&1; then
+              mongosh --quiet --eval '\''db.adminCommand({listDatabases:1}).databases.forEach(function(d){ print("DB " + d.name); var x=db.getSiblingDB(d.name); x.getCollectionNames().forEach(function(c){ print("  " + c + ": " + x.getCollection(c).countDocuments({})); }); });'\''
+            elif command -v mongo >/dev/null 2>&1; then
+              mongo --quiet --eval '\''db.adminCommand({listDatabases:1}).databases.forEach(function(d){ print("DB " + d.name); var x=db.getSiblingDB(d.name); x.getCollectionNames().forEach(function(c){ print("  " + c + ": " + x.getCollection(c).count({})); }); });'\''
+            else
+              echo "No mongo shell found"
+              exit 2
+            fi
+          '

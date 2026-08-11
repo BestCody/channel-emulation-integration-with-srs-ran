@@ -1,0 +1,60 @@
+name: Temporal Edge Memory Experiment
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/temporal-edge-memory-experiment.yml'
+
+jobs:
+  temporal-edge-memory:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 360
+    steps:
+      - name: Locate temporal NRX experiment assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "HOST=$(hostname)"
+          echo "HOME=$HOME"
+          echo "--- candidate project directories ---"
+          find "$HOME" -maxdepth 4 -type d \( -name 'temporal_reuse' -o -name 'nrx_iter_study' -o -name 'neural-rx-experiments' -o -name 'neural_rx' \) -print 2>/dev/null | sort
+          echo "--- candidate Python environments ---"
+          for p in "$HOME"/*/bin/python "$HOME"/miniconda3/envs/*/bin/python "$HOME"/anaconda3/envs/*/bin/python; do
+            [ -x "$p" ] || continue
+            echo "PYTHON=$p"
+            "$p" - <<'PY' || true
+import importlib
+mods = ['tensorflow','sionna','numpy']
+for m in mods:
+    try:
+        x=importlib.import_module(m)
+        print(m, getattr(x,'__version__','unknown'))
+    except Exception as e:
+        print(m, 'MISSING', type(e).__name__)
+PY
+          done
+          echo "--- temporal files ---"
+          find "$HOME" -maxdepth 6 -type f \( -iname '*temporal*' -o -iname '*fusion*' -o -iname '*iter*study*' \) -print 2>/dev/null | head -n 300
+
+      - name: Inspect existing temporal experiment trees
+        shell: bash
+        run: |
+          set -euo pipefail
+          for d in \
+            "$HOME/sionna-srsran/temporal_reuse" \
+            "$HOME/temporal_reuse" \
+            "$HOME/neural-rx-experiments" \
+            "$HOME/sionna-srsran/neural_rx" \
+            "$HOME/neural_rx"; do
+            if [ -d "$d" ]; then
+              echo "===== $d ====="
+              find "$d" -maxdepth 3 -type f | sort | head -n 400
+              if [ -d "$d/.git" ]; then
+                git -C "$d" status --short --branch || true
+                git -C "$d" remote -v || true
+              fi
+            fi
+          done

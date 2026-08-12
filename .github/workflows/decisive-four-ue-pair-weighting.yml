@@ -1,0 +1,103 @@
+name: Decisive Four UE Pair Weighting
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/decisive-four-ue-pair-weighting.yml'
+
+jobs:
+  decisive-four-ue:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 360
+    steps:
+      - name: Prepare experiment
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$HOME/sionna-srsran"
+          NRX="$ROOT/neural_rx"
+          STUDY="$ROOT/temporal_reuse"
+          PY="$HOME/miniforge3/envs/neural_rx/bin/python"
+          OUT="$STUDY/four_ue_pair/decisive_${GITHUB_RUN_ID}"
+          mkdir -p "$OUT/cold" "$OUT/weighted"
+          git -C "$NRX" fetch origin experiment/4ue-pair-weighting
+          git -C "$NRX" show origin/experiment/4ue-pair-weighting:scripts/decisive_four_ue_pair_weighting.py > "$STUDY/decisive_four_ue_pair_weighting.py"
+          git -C "$NRX" show origin/experiment/4ue-pair-weighting:config/nrx_large_4ue.cfg > "$NRX/config/nrx_large_4ue.cfg"
+          "$PY" -m py_compile "$STUDY/decisive_four_ue_pair_weighting.py"
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+          echo "PY=$PY" >> "$GITHUB_ENV"
+          echo "NRX=$NRX" >> "$GITHUB_ENV"
+          echo "STUDY=$STUDY" >> "$GITHUB_ENV"
+          nvidia-smi
+
+      - name: Train proper cold 4-UE NRX until K1 and K2 cross
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$NRX/scripts"
+          "$PY" "$STUDY/decisive_four_ue_pair_weighting.py" \
+            --mode cold --gpu 0 \
+            --output-dir "$OUT/cold" \
+            --max-steps 40000 --chunk-steps 5000 --batch 64 --seed 20260811 \
+            2>&1 | tee "$OUT/cold.log"
+
+      - name: Read selected cold training budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          STEPS=$("$PY" -c "import json; print(json.load(open('$OUT/cold/cold_result.json'))['steps'])")
+          COLD_K1=$("$PY" -c "import json; print(json.load(open('$OUT/cold/cold_result.json'))['full_eval']['k1']['crossing'])")
+          COLD_K2=$("$PY" -c "import json; print(json.load(open('$OUT/cold/cold_result.json'))['full_eval']['k2']['crossing'])")
+          echo "SELECTED_STEPS=$STEPS" >> "$GITHUB_ENV"
+          echo "Cold selected steps: $STEPS"
+          echo "Cold K1 crossing: $COLD_K1"
+          echo "Cold K2 crossing: $COLD_K2"
+
+      - name: Train dynamic pair-weighted NRX with identical budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$NRX/scripts"
+          "$PY" "$STUDY/decisive_four_ue_pair_weighting.py" \
+            --mode weighted --gpu 1 \
+            --output-dir "$OUT/weighted" \
+            --target-steps "$SELECTED_STEPS" --chunk-steps 5000 --batch 64 --seed 20260811 \
+            2>&1 | tee "$OUT/weighted.log"
+
+      - name: Summarize decisive comparison
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$PY" - <<'PY' | tee "$OUT/summary.log"
+          import json, os, pathlib
+          out=pathlib.Path(os.environ['OUT'])
+          c=json.load(open(out/'cold'/'cold_result.json'))
+          w=json.load(open(out/'weighted'/'weighted_result.json'))
+          ck1=c['full_eval']['k1']['crossing']; ck2=c['full_eval']['k2']['crossing']
+          wk1=w['full_eval']['k1']['crossing']; wk2=w['full_eval']['k2']['crossing']
+          s={'run_id':os.environ.get('GITHUB_RUN_ID'),'training_steps_each':c['steps'],
+             'cold_k1_crossing_db':ck1,'cold_k2_crossing_db':ck2,
+             'weighted_k1_crossing_db':wk1,'weighted_k2_crossing_db':wk2,
+             'weighted_k1_gain_vs_cold_k1_db':None if ck1 is None or wk1 is None else ck1-wk1,
+             'weighted_k1_gap_to_cold_k2_db':None if wk1 is None or ck2 is None else wk1-ck2,
+             'pair_parameters':w['pair_parameters'],
+             'pair_weight_diagnostic':w['full_eval']['pair_weight_diagnostic']}
+          if wk1 is not None and ck2 is not None:
+              gap=wk1-ck2
+              s['iteration_reduction_verdict']='success' if gap<=0.10 else ('partial' if gap<=0.30 else 'no')
+          else:
+              s['iteration_reduction_verdict']='inconclusive_no_crossing'
+          (out/'summary.json').write_text(json.dumps(s,indent=2))
+          print(json.dumps(s,indent=2))
+          PY
+
+      - name: Upload decisive results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: decisive-four-ue-pair-weighting-${{ github.run_id }}
+          path: ${{ env.OUT }}
+          if-no-files-found: warn
+          retention-days: 30

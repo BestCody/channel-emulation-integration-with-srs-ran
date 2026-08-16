@@ -17,48 +17,59 @@ jobs:
         run: |
           set -euo pipefail
           IMAGE='ghcr.io/sulaimanalmani/srsranzmq/srsran_zmq:v1.0'
+
+          if docker info >/dev/null 2>&1; then
+            DKR='docker'
+          elif sudo -n docker info >/dev/null 2>&1; then
+            DKR='sudo -n docker'
+          else
+            echo 'Neither docker nor passwordless sudo docker can access the daemon.' >&2
+            ls -l /var/run/docker.sock || true
+            id
+            exit 1
+          fi
+
+          echo "docker_command=$DKR"
           echo '=== IMAGE ==='
           echo "$IMAGE"
-          docker pull "$IMAGE"
+          $DKR pull "$IMAGE"
 
           echo '=== INSPECT ==='
-          docker image inspect "$IMAGE" --format '{{json .Config.Labels}}'
-          docker image inspect "$IMAGE" --format 'id={{.Id}} created={{.Created}} entrypoint={{json .Config.Entrypoint}} cmd={{json .Config.Cmd}}'
+          $DKR image inspect "$IMAGE" --format '{{json .Config.Labels}}'
+          $DKR image inspect "$IMAGE" --format 'id={{.Id}} created={{.Created}} entrypoint={{json .Config.Entrypoint}} cmd={{json .Config.Cmd}}'
 
           echo '=== HISTORY ==='
-          docker history --no-trunc "$IMAGE" | head -80 || true
+          $DKR history --no-trunc "$IMAGE" | head -80 || true
 
           echo '=== SOURCE DIRECTORIES ==='
-          docker run --rm --entrypoint /bin/sh "$IMAGE" -lc '
-            find / -maxdepth 4 -type d \( -iname "*srsran*" -o -iname "*srsRAN*" \) 2>/dev/null | head -100
+          $DKR run --rm --entrypoint /bin/sh "$IMAGE" -lc '
+            find / -maxdepth 5 -type d \( -iname "*srsran*" -o -iname "*srsRAN*" \) 2>/dev/null | head -150
           '
 
           echo '=== SOURCE / BUILD METADATA ==='
-          docker run --rm --entrypoint /bin/sh "$IMAGE" -lc '
-            for p in /srsran /srsRAN_Project /opt/srsRAN_Project /root/srsRAN_Project /workspace/srsRAN_Project /usr/src/srsRAN_Project; do
+          $DKR run --rm --entrypoint /bin/sh "$IMAGE" -lc '
+            for p in /srsran /srsRAN_Project /opt/srsRAN_Project /root/srsRAN_Project /workspace/srsRAN_Project /usr/src/srsRAN_Project /home/srsran/srsRAN_Project; do
               if [ -e "$p" ]; then
                 echo "--- $p"
-                find "$p" -maxdepth 3 -type f \( -name CMakeCache.txt -o -name .git -o -name HEAD -o -name "*version*" -o -name "*.cpp" \) 2>/dev/null | head -80
                 [ -d "$p/.git" ] && git -C "$p" rev-parse HEAD || true
+                find "$p" -maxdepth 4 -type f \( -name CMakeCache.txt -o -name HEAD -o -name "*version*" -o -name "*.cpp" \) 2>/dev/null | head -120
               fi
             done
           '
 
           echo '=== GNB VERSION ==='
-          docker run --rm --entrypoint /bin/sh "$IMAGE" -lc '
-            command -v gnb || true
-            command -v srsran-gnb || true
-            for b in $(command -v gnb 2>/dev/null) $(command -v srsran-gnb 2>/dev/null) /usr/local/bin/gnb /srsran/build/apps/gnb/gnb; do
+          $DKR run --rm --entrypoint /bin/sh "$IMAGE" -lc '
+            for b in $(command -v gnb 2>/dev/null) $(command -v srsran-gnb 2>/dev/null) /usr/local/bin/gnb /srsran/build/apps/gnb/gnb /srsRAN_Project/build/apps/gnb/gnb; do
               [ -x "$b" ] || continue
               echo "--- $b"
               "$b" --version 2>&1 || true
             done
           '
 
-          echo '=== PUSCH/RNTI SOURCE HITS IN IMAGE ==='
-          docker run --rm --entrypoint /bin/sh "$IMAGE" -lc '
-            grep -RInE --include="*.h" --include="*.hpp" --include="*.cpp" --include="*.cc" \
-              "(struct .*pusch|pusch_processor|\.rnti|rnti_t|rnti =|rnti;)" \
-              /srsran /srsRAN_Project /opt/srsRAN_Project /root/srsRAN_Project /workspace/srsRAN_Project /usr/src/srsRAN_Project \
-              2>/dev/null | head -300 || true
+          echo '=== NEURAL / PUSCH / RNTI SOURCE HITS IN IMAGE ==='
+          $DKR run --rm --entrypoint /bin/sh "$IMAGE" -lc '
+            grep -RInE --include="*.h" --include="*.hpp" --include="*.cpp" --include="*.cc" --include="*.py" \
+              "(neural|pusch_processor|pusch.*rnti|\.rnti|rnti_t|rnti =|rnti;)" \
+              /srsran /srsRAN_Project /opt/srsRAN_Project /root/srsRAN_Project /workspace/srsRAN_Project /usr/src/srsRAN_Project /home/srsran/srsRAN_Project \
+              2>/dev/null | head -500 || true
           '

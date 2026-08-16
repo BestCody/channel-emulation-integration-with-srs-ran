@@ -1,0 +1,78 @@
+name: Temporal UE Memory Training Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/temporal-ue-memory-smoke.yml'
+
+jobs:
+  temporal-ue-memory-smoke:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 45
+    steps:
+      - name: Install temporal sequence training code
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$HOME/sionna-srsran"
+          NRX="$ROOT/neural_rx"
+          STUDY="$ROOT/temporal_reuse"
+          PY="$HOME/miniforge3/envs/neural_rx/bin/python"
+          OUT="$STUDY/ue_memory/smoke_${GITHUB_RUN_ID}"
+
+          mkdir -p "$STUDY" "$OUT"
+          git -C "$NRX" fetch origin experiment/temporal-ue-memory-training
+          git -C "$NRX" show \
+            origin/experiment/temporal-ue-memory-training:scripts/temporal_training_data.py \
+            > "$STUDY/temporal_training_data.py"
+          git -C "$NRX" show \
+            origin/experiment/temporal-ue-memory-training:scripts/train_temporal_ue_memory.py \
+            > "$STUDY/train_temporal_ue_memory.py"
+
+          "$PY" -m py_compile \
+            "$STUDY/temporal_training_data.py" \
+            "$STUDY/train_temporal_ue_memory.py"
+
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+          echo "PY=$PY" >> "$GITHUB_ENV"
+          echo "NRX=$NRX" >> "$GITHUB_ENV"
+          echo "STUDY=$STUDY" >> "$GITHUB_ENV"
+          echo "host=$(hostname)"
+          nvidia-smi
+
+      - name: Run connected TB sequence training smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$NRX/scripts"
+          "$PY" "$STUDY/train_temporal_ue_memory.py" \
+            --gpu 0 \
+            --d-mem 16 \
+            --num-it 2 \
+            --train-steps 4 \
+            --memory-only-steps 2 \
+            --batch-size 2 \
+            --seq-len 4 \
+            --min-ebno-db 2.5 \
+            --max-ebno-db 3.5 \
+            --log-every 1 \
+            --seed 20260816 \
+            --output-dir "$OUT" \
+            2>&1 | tee "$OUT/smoke.log"
+
+          test -f "$OUT/training_summary.json"
+          grep -q '"passed": true' "$OUT/training_summary.json"
+          echo '--- summary ---'
+          cat "$OUT/training_summary.json"
+
+      - name: Upload smoke-test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: temporal-ue-memory-smoke-${{ github.run_id }}
+          path: ${{ env.OUT }}
+          if-no-files-found: warn
+          retention-days: 30

@@ -30,45 +30,36 @@ jobs:
           fi
 
           echo "docker_command=$DKR"
-          echo '=== IMAGE ==='
-          echo "$IMAGE"
           $DKR pull "$IMAGE"
 
-          echo '=== INSPECT ==='
-          $DKR image inspect "$IMAGE" | head -250
-
+          echo '=== IMAGE ID ==='
+          $DKR image inspect "$IMAGE" --format '{{.Id}} {{.Created}}'
           echo '=== HISTORY ==='
-          $DKR history --no-trunc "$IMAGE" | head -100 || true
+          $DKR history --no-trunc "$IMAGE" | head -30 || true
 
-          echo '=== SOURCE DIRECTORIES ==='
-          $DKR run --rm --entrypoint /bin/sh "$IMAGE" -lc '
-            find / -maxdepth 6 -type d \( -iname "*srsran*" -o -iname "*srsRAN*" \) 2>/dev/null | head -200
-          '
-
-          echo '=== SOURCE / BUILD METADATA ==='
-          $DKR run --rm --entrypoint /bin/sh "$IMAGE" -lc '
-            for p in /srsran /srsRAN_Project /opt/srsRAN_Project /root/srsRAN_Project /workspace/srsRAN_Project /usr/src/srsRAN_Project /home/srsran/srsRAN_Project /home/srsran; do
-              if [ -e "$p" ]; then
-                echo "--- $p"
-                [ -d "$p/.git" ] && git -C "$p" rev-parse HEAD || true
-                find "$p" -maxdepth 5 -type f \( -name CMakeCache.txt -o -name HEAD -o -name "*version*" -o -name "*.cpp" -o -name "*.hpp" \) 2>/dev/null | head -180
-              fi
-            done
-          '
+          echo '=== /srsran CONTENTS ==='
+          $DKR run --rm --entrypoint /bin/sh "$IMAGE" -lc 'ls -lah /srsran; file /srsran/gnb 2>/dev/null || true; sha256sum /srsran/gnb 2>/dev/null || true'
 
           echo '=== GNB VERSION ==='
           $DKR run --rm --entrypoint /bin/sh "$IMAGE" -lc '
-            for b in $(command -v gnb 2>/dev/null) $(command -v srsran-gnb 2>/dev/null) /usr/local/bin/gnb /srsran/build/apps/gnb/gnb /srsRAN_Project/build/apps/gnb/gnb /home/srsran/build/apps/gnb/gnb; do
-              [ -x "$b" ] || continue
-              echo "--- $b"
-              "$b" --version 2>&1 || true
-            done
+            if [ -x /srsran/gnb ]; then
+              /srsran/gnb --version 2>&1 || true
+              /srsran/gnb -v 2>&1 | head -30 || true
+              /srsran/gnb --help 2>&1 | head -20 || true
+            fi
           '
 
-          echo '=== NEURAL / PUSCH / RNTI SOURCE HITS IN IMAGE ==='
+          echo '=== BINARY VERSION STRINGS ==='
           $DKR run --rm --entrypoint /bin/sh "$IMAGE" -lc '
-            grep -RInE --include="*.h" --include="*.hpp" --include="*.cpp" --include="*.cc" --include="*.py" \
-              "(neural|pusch_processor|pusch.*rnti|\.rnti|rnti_t|rnti =|rnti;)" \
-              /srsran /srsRAN_Project /opt/srsRAN_Project /root/srsRAN_Project /workspace/srsRAN_Project /usr/src/srsRAN_Project /home/srsran/srsRAN_Project /home/srsran \
-              2>/dev/null | head -800 || true
+            if [ -f /srsran/gnb ]; then
+              strings /srsran/gnb 2>/dev/null | grep -Ei "(srsran|srsRAN|version|commit|release|23\.|24\.|22\.)" | head -200 || true
+            fi
+          '
+
+          echo '=== ELF BUILD INFO ==='
+          $DKR run --rm --entrypoint /bin/sh "$IMAGE" -lc '
+            if [ -f /srsran/gnb ]; then
+              readelf -n /srsran/gnb 2>/dev/null | head -100 || true
+              readelf -p .comment /srsran/gnb 2>/dev/null | head -80 || true
+            fi
           '

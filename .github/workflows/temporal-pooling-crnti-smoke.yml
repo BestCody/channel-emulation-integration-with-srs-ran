@@ -1,0 +1,134 @@
+name: Temporal Pooling and C-RNTI Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/temporal-pooling-crnti-smoke.yml'
+
+jobs:
+  temporal-pooling-crnti-smoke:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 60
+    steps:
+      - name: Install current temporal-memory experiment code
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$HOME/sionna-srsran"
+          NRX="$ROOT/neural_rx"
+          STUDY="$ROOT/temporal_reuse"
+          PY="$HOME/miniforge3/envs/neural_rx/bin/python"
+          OUT="$STUDY/ue_memory/pooling_crnti_smoke_${GITHUB_RUN_ID}"
+
+          mkdir -p "$STUDY" "$OUT"
+          git -C "$NRX" fetch origin experiment/temporal-ue-memory-training
+
+          for f in \
+            temporal_training_data.py \
+            ue_memory_manager.py \
+            temporal_compression.py \
+            temporal_pooling.py \
+            train_temporal_ue_memory_v3.py \
+            train_temporal_ue_memory_v4.py \
+            test_temporal_pooling.py \
+            crnti_memory_adapter.py \
+            test_crnti_memory_adapter.py
+          do
+            git -C "$NRX" show \
+              "origin/experiment/temporal-ue-memory-training:scripts/$f" \
+              > "$STUDY/$f"
+          done
+
+          "$PY" -m py_compile \
+            "$STUDY/temporal_training_data.py" \
+            "$STUDY/ue_memory_manager.py" \
+            "$STUDY/temporal_compression.py" \
+            "$STUDY/temporal_pooling.py" \
+            "$STUDY/train_temporal_ue_memory_v3.py" \
+            "$STUDY/train_temporal_ue_memory_v4.py" \
+            "$STUDY/test_temporal_pooling.py" \
+            "$STUDY/crnti_memory_adapter.py" \
+            "$STUDY/test_crnti_memory_adapter.py"
+
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+          echo "PY=$PY" >> "$GITHUB_ENV"
+          echo "NRX=$NRX" >> "$GITHUB_ENV"
+          echo "STUDY=$STUDY" >> "$GITHUB_ENV"
+          hostname
+          nvidia-smi
+
+      - name: Unit test pooling and C-RNTI ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$STUDY"
+          "$PY" test_temporal_pooling.py 2>&1 | tee "$OUT/pooling_unit.log"
+          "$PY" test_crnti_memory_adapter.py 2>&1 | tee "$OUT/crnti_unit.log"
+          grep -q '"passed": true' "$OUT/pooling_unit.log"
+          grep -q '"passed": true' "$OUT/crnti_unit.log"
+
+      - name: Smoke train all pooling modes with one fixed compressor
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$NRX/scripts"
+
+          # Keep the writer fixed here so this smoke isolates the new pooling
+          # dimension. PCA and AE already have a separate passing smoke matrix.
+          for POOL in mean attention cnn; do
+            MODE_OUT="$OUT/${POOL}_writer"
+            mkdir -p "$MODE_OUT"
+            echo "=== pooling=$POOL compression=writer ==="
+
+            "$PY" "$STUDY/train_temporal_ue_memory_v4.py" \
+              --gpu 0 \
+              --pooling "$POOL" \
+              --compression writer \
+              --d-mem 8 \
+              --num-it 2 \
+              --train-steps 2 \
+              --memory-only-steps 1 \
+              --batch-size 2 \
+              --seq-len 3 \
+              --ue-pool-size 4 \
+              --memory-expiry-slots 3 \
+              --schedule-switch-prob 1.0 \
+              --schedule-reorder-prob 1.0 \
+              --min-ebno-db 2.5 \
+              --max-ebno-db 3.5 \
+              --log-every 1 \
+              --seed 20260816 \
+              --output-dir "$MODE_OUT" \
+              2>&1 | tee "$MODE_OUT/smoke.log"
+
+            test -f "$MODE_OUT/training_summary.json"
+            "$PY" - "$POOL" "$MODE_OUT/training_summary.json" <<'PY'
+          import json
+          import sys
+
+          pool, path = sys.argv[1:]
+          x = json.load(open(path))
+          assert x["architecture"] == "ue_identity_aware_temporal_memory_v4_pooling"
+          assert x["pooling"] == pool
+          assert x["compression"] == "writer"
+          assert x["d_mem"] == 8
+          assert x["memory_cap_bits_per_ue"] == 256
+          assert x["memory_cap_bytes_per_ue"] == 32
+          assert x["dynamic_scheduling"] is True
+          assert x["identity_routing_check"]["passed"] is True
+          assert x["temporal_compression_gradient_check"]["passed"] is True
+          assert any(row["schedule_change_fraction"] > 0.0 for row in x["history"])
+          print("POOLING_SUMMARY_CHECK_PASSED", pool)
+          PY
+          done
+
+      - name: Upload smoke results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: temporal-pooling-crnti-smoke-${{ github.run_id }}
+          path: ${{ env.OUT }}
+          if-no-files-found: warn
+          retention-days: 30

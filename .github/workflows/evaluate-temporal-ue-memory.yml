@@ -30,14 +30,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          PY="$HOME/miniforge3/envs/neural_rx/bin/python"
+          test -x "$PY"
+          echo "PY=$PY" >> "$GITHUB_ENV"
           hostname
           nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
-          python --version
-          python - <<'PY'
+          "$PY" --version
+          "$PY" - <<'PY'
           import tensorflow as tf
           import sionna
           print("tensorflow", tf.__version__)
           print("gpus", tf.config.list_physical_devices("GPU"))
+          assert tf.config.list_physical_devices("GPU"), "TensorFlow sees no GPU"
           print("sionna_import_ok")
           PY
 
@@ -53,7 +57,7 @@ jobs:
 
           VALID=0
           if [[ -f "$CKPT" && -f "$SUMMARY" ]]; then
-            if python - "$SUMMARY" <<'PY'
+            if "$PY" - "$SUMMARY" <<'PY'
           import json, sys
           s = json.load(open(sys.argv[1]))
           checks = [
@@ -80,7 +84,7 @@ jobs:
           if [[ "$VALID" -ne 1 ]]; then
             rm -rf "$OUT"
             mkdir -p "$OUT"
-            python train_temporal_ue_memory_v4.py \
+            "$PY" train_temporal_ue_memory_v4.py \
               --pooling mean \
               --compression writer \
               --d-mem 32 \
@@ -111,7 +115,7 @@ jobs:
           set -euo pipefail
           EVAL_OUT="$TEMPORAL_WRITER_DIR/evaluation_fixed"
           rm -rf "$EVAL_OUT"
-          python evaluate_temporal_ue_memory.py \
+          "$PY" evaluate_temporal_ue_memory.py \
             --checkpoint "$TEMPORAL_WRITER_CHECKPOINT" \
             --config nrx_large.cfg \
             --compression writer \
@@ -136,7 +140,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python - "$TEMPORAL_EVAL_OUT/evaluation.json" <<'PY'
+          "$PY" - "$TEMPORAL_EVAL_OUT/evaluation.json" <<'PY'
           import json, sys
           s = json.load(open(sys.argv[1]))
           print("SNR@10% TBLER (TB2+)")

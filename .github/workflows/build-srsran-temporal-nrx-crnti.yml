@@ -35,8 +35,10 @@ jobs:
           git -C "$SRC" apply --check "$PATCH"
           git -C "$SRC" apply "$PATCH"
 
-          grep -q 'notify_temporal_nrx_pusch_context({pdu.pdu.rnti, pdu.pdu.slot})' \
+          grep -q 'temporal_nrx_pusch_context_scope temporal_nrx_scope' \
             "$SRC/lib/phy/upper/uplink_processor_impl.cpp"
+          grep -q 'get_current_temporal_nrx_pusch_context' \
+            "$SRC/include/srsran/phy/upper/temporal_nrx_pusch_context.h"
           grep -q 'uint16_t   crnti' \
             "$SRC/include/srsran/phy/upper/temporal_nrx_pusch_context.h"
 
@@ -48,7 +50,7 @@ jobs:
           git -C "$SRC" diff --check
           git -C "$SRC" status --short
 
-      - name: Compile and execute hook contract probe
+      - name: Compile and execute scoped-context contract probe
         shell: bash
         run: |
           set -euo pipefail
@@ -71,18 +73,41 @@ jobs:
           int main()
           {
             using namespace srsran;
-            set_temporal_nrx_pusch_context_hook(&capture);
-            notify_temporal_nrx_pusch_context({0x4601, slot_point()});
-            if (!called || observed_crnti != 0x4601) {
-              return 2;
+
+            if (get_current_temporal_nrx_pusch_context() != nullptr) {
+              return 1;
             }
+
+            set_temporal_nrx_pusch_context_hook(&capture);
+            {
+              temporal_nrx_pusch_context_scope scope({0x4601, slot_point(1, 42)});
+              const auto* current = get_current_temporal_nrx_pusch_context();
+              if (!called || observed_crnti != 0x4601 || current == nullptr) {
+                return 2;
+              }
+              if (current->crnti != 0x4601 || current->slot.system_slot() != 42) {
+                return 3;
+              }
+            }
+            if (get_current_temporal_nrx_pusch_context() != nullptr) {
+              return 4;
+            }
+
             called = false;
             clear_temporal_nrx_pusch_context_hook();
-            notify_temporal_nrx_pusch_context({0x4602, slot_point()});
-            if (called) {
-              return 3;
+            {
+              temporal_nrx_pusch_context_scope scope({0x4602, slot_point(1, 43)});
+              const auto* current = get_current_temporal_nrx_pusch_context();
+              if (called || current == nullptr || current->crnti != 0x4602) {
+                return 5;
+              }
             }
-            std::cout << "TEMPORAL_NRX_CRNTI_HOOK_PROBE_PASSED crnti=0x4601\n";
+            if (get_current_temporal_nrx_pusch_context() != nullptr) {
+              return 6;
+            }
+
+            std::cout
+              << "TEMPORAL_NRX_CRNTI_SCOPE_PROBE_PASSED crnti=0x4601 slot=42\n";
             return 0;
           }
           CPP

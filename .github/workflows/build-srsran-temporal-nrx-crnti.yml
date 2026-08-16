@@ -47,8 +47,6 @@ jobs:
 
           git -C "$SRC" diff --check
           git -C "$SRC" status --short
-          git -C "$SRC" diff --stat
-          git -C "$SRC" diff
 
       - name: Compile and execute hook contract probe
         shell: bash
@@ -78,14 +76,12 @@ jobs:
             if (!called || observed_crnti != 0x4601) {
               return 2;
             }
-
             called = false;
             clear_temporal_nrx_pusch_context_hook();
             notify_temporal_nrx_pusch_context({0x4602, slot_point()});
             if (called) {
               return 3;
             }
-
             std::cout << "TEMPORAL_NRX_CRNTI_HOOK_PROBE_PASSED crnti=0x4601\n";
             return 0;
           }
@@ -96,6 +92,19 @@ jobs:
             -I"$SRC/external/fmt/include" \
             "$ROOT/crnti_hook_probe.cpp" -o "$ROOT/crnti_hook_probe"
           "$ROOT/crnti_hook_probe"
+
+      - name: Ensure srsRAN build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v cmake >/dev/null 2>&1; then
+            sudo -n apt-get update
+            sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+              build-essential cmake pkg-config \
+              libfftw3-dev libmbedtls-dev libsctp-dev libyaml-cpp-dev \
+              libgtest-dev libboost-program-options-dev libzmq3-dev
+          fi
+          cmake --version
 
       - name: Configure srsRAN
         shell: bash

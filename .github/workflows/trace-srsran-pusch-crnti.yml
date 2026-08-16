@@ -1,0 +1,47 @@
+name: Trace srsRAN PUSCH C-RNTI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/trace-srsran-pusch-crnti.yml'
+
+jobs:
+  trace:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 20
+    steps:
+      - name: Clone exact deployed source and trace PUSCH path
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$HOME/sionna-srsran/srsran_crnti_trace"
+          SRC="$ROOT/srsRAN_Project"
+          SHA='bcf941b34faba5e14b4d614772fa45068721afdf'
+          rm -rf "$ROOT"
+          mkdir -p "$ROOT"
+          git clone --filter=blob:none https://github.com/srsran/srsRAN_Project.git "$SRC"
+          git -C "$SRC" checkout "$SHA"
+          echo "HEAD=$(git -C "$SRC" rev-parse HEAD)"
+
+          cd "$SRC"
+          echo '=== PUSCH PROCESS CALLS ==='
+          grep -RIn --include='*.cpp' --include='*.h' --include='*.hpp' \
+            -E '(\.process\(|->process\().*pusch|pusch.*(\.process\(|->process\()' \
+            lib include apps | head -200 || true
+
+          echo '=== pusch_processor REFERENCES ==='
+          grep -RIn --include='*.cpp' --include='*.h' --include='*.hpp' \
+            'pusch_processor' lib include apps | head -350 || true
+
+          echo '=== pdu.rnti / rnti ASSIGNMENTS NEAR PUSCH ==='
+          grep -RIn --include='*.cpp' --include='*.h' --include='*.hpp' \
+            -E '(pusch.*rnti|rnti.*pusch|\.rnti[[:space:]]*=)' lib include apps | head -400 || true
+
+          echo '=== UPLINK PROCESSOR FILES ==='
+          find lib include apps -type f \( -iname '*uplink*processor*' -o -iname '*pusch*processor*' -o -iname '*ul*processor*' \) | sort | head -250
+
+          echo '=== PROCESS INVOCATIONS WITH pdu ==='
+          grep -RIn --include='*.cpp' --include='*.h' --include='*.hpp' \
+            -E 'process\([^;]*pdu|process\([^;]*PDU' lib include apps | head -350 || true

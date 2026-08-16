@@ -19,9 +19,9 @@ The callback is deliberately synchronous and allocation-free on the srsRAN
 side. A registered consumer is responsible for remaining non-blocking and
 real-time safe.
 ---
- .../phy/upper/temporal_nrx_pusch_context.h | 107 +++++++++++++++++++++
+ .../phy/upper/temporal_nrx_pusch_context.h | 115 +++++++++++++++++++++
  lib/phy/upper/uplink_processor_impl.cpp    |   4 +
- 2 files changed, 111 insertions(+)
+ 2 files changed, 119 insertions(+)
  create mode 100644 include/srsran/phy/upper/temporal_nrx_pusch_context.h
 
 diff --git a/include/srsran/phy/upper/temporal_nrx_pusch_context.h b/include/srsran/phy/upper/temporal_nrx_pusch_context.h
@@ -29,7 +29,7 @@ new file mode 100644
 index 000000000..111111111
 --- /dev/null
 +++ b/include/srsran/phy/upper/temporal_nrx_pusch_context.h
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,115 @@
 +/*
 + * Copyright 2026
 + *
@@ -70,9 +70,14 @@ index 000000000..111111111
 +  return hook;
 +}
 +
-+/// Context for the PUSCH currently executing on this processing thread.
-+/// A pointer is used so installing/restoring the scope is allocation-free.
-+inline thread_local const temporal_nrx_pusch_context* current_temporal_nrx_pusch_context = nullptr;
++/// C++11/14-compatible per-thread storage for the PUSCH currently executing.
++/// Returning a reference lets the RAII scope install/restore the pointer without
++/// using a C++17 inline variable.
++inline const temporal_nrx_pusch_context*& current_temporal_nrx_pusch_context_storage() noexcept
++{
++  static thread_local const temporal_nrx_pusch_context* context = nullptr;
++  return context;
++}
 +
 +} // namespace detail
 +
@@ -108,7 +113,7 @@ index 000000000..111111111
 +/// only until that PUSCH call returns and must not be retained.
 +inline const temporal_nrx_pusch_context* get_current_temporal_nrx_pusch_context() noexcept
 +{
-+  return detail::current_temporal_nrx_pusch_context;
++  return detail::current_temporal_nrx_pusch_context_storage();
 +}
 +
 +/// Installs a PUSCH context for the lifetime of one synchronous processing call.
@@ -120,13 +125,16 @@ index 000000000..111111111
 +{
 +public:
 +  explicit temporal_nrx_pusch_context_scope(const temporal_nrx_pusch_context& context) :
-+    context_(context), previous_(detail::current_temporal_nrx_pusch_context)
++    context_(context), previous_(detail::current_temporal_nrx_pusch_context_storage())
 +  {
-+    detail::current_temporal_nrx_pusch_context = &context_;
++    detail::current_temporal_nrx_pusch_context_storage() = &context_;
 +    notify_temporal_nrx_pusch_context(context_);
 +  }
 +
-+  ~temporal_nrx_pusch_context_scope() { detail::current_temporal_nrx_pusch_context = previous_; }
++  ~temporal_nrx_pusch_context_scope()
++  {
++    detail::current_temporal_nrx_pusch_context_storage() = previous_;
++  }
 +
 +  temporal_nrx_pusch_context_scope(const temporal_nrx_pusch_context_scope&)            = delete;
 +  temporal_nrx_pusch_context_scope& operator=(const temporal_nrx_pusch_context_scope&) = delete;

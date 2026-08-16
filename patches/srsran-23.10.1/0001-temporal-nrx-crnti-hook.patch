@@ -12,9 +12,9 @@ The callback is deliberately synchronous and allocation-free on the srsRAN
 side. A registered consumer is responsible for remaining non-blocking and
 real-time safe.
 ---
- .../phy/upper/temporal_nrx_pusch_context.h    | 69 ++++++++++++++++++++
+ .../phy/upper/temporal_nrx_pusch_context.h    | 68 ++++++++++++++++++++
  lib/phy/upper/uplink_processor_impl.cpp       |  4 ++
- 2 files changed, 73 insertions(+)
+ 2 files changed, 72 insertions(+)
  create mode 100644 include/srsran/phy/upper/temporal_nrx_pusch_context.h
 
 diff --git a/include/srsran/phy/upper/temporal_nrx_pusch_context.h b/include/srsran/phy/upper/temporal_nrx_pusch_context.h
@@ -22,7 +22,7 @@ new file mode 100644
 index 000000000..111111111
 --- /dev/null
 +++ b/include/srsran/phy/upper/temporal_nrx_pusch_context.h
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,68 @@
 +/*
 + * Copyright 2026
 + *
@@ -91,8 +91,7 @@ index 000000000..111111111
 +}
 +
 +} // namespace srsran
-+
-diff --git a/lib/phy/upper/uplink_processor_impl.cpp b/lib/phy/upper/uplink_processor_impl.cpp
++diff --git a/lib/phy/upper/uplink_processor_impl.cpp b/lib/phy/upper/uplink_processor_impl.cpp
 +index 2a2453bef..222222222 100644
 +--- a/lib/phy/upper/uplink_processor_impl.cpp
 ++++ b/lib/phy/upper/uplink_processor_impl.cpp
@@ -113,6 +112,5 @@ diff --git a/lib/phy/upper/uplink_processor_impl.cpp b/lib/phy/upper/uplink_proc
 ++
 +   // Process PUSCH.
 +   pusch_proc->process(data, std::move(rm_buffer), processor_notifier, grid, pdu.pdu);
-+ 
 +-- 
 +2.34.1

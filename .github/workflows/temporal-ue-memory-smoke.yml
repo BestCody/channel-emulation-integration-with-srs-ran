@@ -13,7 +13,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 45
     steps:
-      - name: Install UE-aware temporal training code
+      - name: Install UE-aware temporal training and runtime code
         shell: bash
         run: |
           set -euo pipefail
@@ -29,8 +29,12 @@ jobs:
           for f in \
             temporal_training_data.py \
             ue_memory_manager.py \
+            crnti_memory_adapter.py \
+            temporal_nrx_runtime.py \
             train_temporal_ue_memory.py \
-            test_ue_memory_manager.py
+            test_ue_memory_manager.py \
+            test_crnti_memory_adapter.py \
+            test_temporal_nrx_runtime.py
           do
             git -C "$NRX" show \
               "origin/experiment/temporal-ue-memory-training:scripts/$f" \
@@ -40,8 +44,12 @@ jobs:
           "$PY" -m py_compile \
             "$STUDY/temporal_training_data.py" \
             "$STUDY/ue_memory_manager.py" \
+            "$STUDY/crnti_memory_adapter.py" \
+            "$STUDY/temporal_nrx_runtime.py" \
             "$STUDY/train_temporal_ue_memory.py" \
-            "$STUDY/test_ue_memory_manager.py"
+            "$STUDY/test_ue_memory_manager.py" \
+            "$STUDY/test_crnti_memory_adapter.py" \
+            "$STUDY/test_temporal_nrx_runtime.py"
 
           echo "OUT=$OUT" >> "$GITHUB_ENV"
           echo "PY=$PY" >> "$GITHUB_ENV"
@@ -58,6 +66,24 @@ jobs:
           "$PY" "$STUDY/test_ue_memory_manager.py" \
             2>&1 | tee "$OUT/ue_memory_manager_test.log"
           grep -q '"passed": true' "$OUT/ue_memory_manager_test.log"
+
+      - name: Test C-RNTI memory adapter
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$STUDY"
+          "$PY" "$STUDY/test_crnti_memory_adapter.py" \
+            2>&1 | tee "$OUT/crnti_memory_adapter_test.log"
+          grep -q '"passed": true' "$OUT/crnti_memory_adapter_test.log"
+
+      - name: Test live temporal NRX runtime transaction
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$STUDY"
+          "$PY" "$STUDY/test_temporal_nrx_runtime.py" \
+            2>&1 | tee "$OUT/temporal_nrx_runtime_test.log"
+          grep -q '"passed": true' "$OUT/temporal_nrx_runtime_test.log"
 
       - name: Validate dynamic temporal data
         shell: bash

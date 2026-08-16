@@ -50,7 +50,7 @@ jobs:
           git -C "$SRC" diff --check
           git -C "$SRC" status --short
 
-      - name: Compile and execute scoped-context contract probe
+      - name: Compile and execute scoped-context contract probe under C++14
         shell: bash
         run: |
           set -euo pipefail
@@ -112,7 +112,7 @@ jobs:
           }
           CPP
 
-          c++ -std=c++17 -pthread \
+          c++ -std=c++14 -pthread \
             -I"$SRC/include" \
             -I"$SRC/external/fmt/include" \
             "$ROOT/crnti_hook_probe.cpp" -o "$ROOT/crnti_hook_probe"

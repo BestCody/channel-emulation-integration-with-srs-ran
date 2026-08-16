@@ -13,7 +13,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 45
     steps:
-      - name: Install temporal sequence training code
+      - name: Install UE-aware temporal training code
         shell: bash
         run: |
           set -euo pipefail
@@ -25,16 +25,23 @@ jobs:
 
           mkdir -p "$STUDY" "$OUT"
           git -C "$NRX" fetch origin experiment/temporal-ue-memory-training
-          git -C "$NRX" show \
-            origin/experiment/temporal-ue-memory-training:scripts/temporal_training_data.py \
-            > "$STUDY/temporal_training_data.py"
-          git -C "$NRX" show \
-            origin/experiment/temporal-ue-memory-training:scripts/train_temporal_ue_memory.py \
-            > "$STUDY/train_temporal_ue_memory.py"
+
+          for f in \
+            temporal_training_data.py \
+            ue_memory_manager.py \
+            train_temporal_ue_memory.py \
+            test_ue_memory_manager.py
+          do
+            git -C "$NRX" show \
+              "origin/experiment/temporal-ue-memory-training:scripts/$f" \
+              > "$STUDY/$f"
+          done
 
           "$PY" -m py_compile \
             "$STUDY/temporal_training_data.py" \
-            "$STUDY/train_temporal_ue_memory.py"
+            "$STUDY/ue_memory_manager.py" \
+            "$STUDY/train_temporal_ue_memory.py" \
+            "$STUDY/test_ue_memory_manager.py"
 
           echo "OUT=$OUT" >> "$GITHUB_ENV"
           echo "PY=$PY" >> "$GITHUB_ENV"
@@ -43,7 +50,36 @@ jobs:
           echo "host=$(hostname)"
           nvidia-smi
 
-      - name: Run connected TB sequence training smoke test
+      - name: Test UE identity memory manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$STUDY"
+          "$PY" "$STUDY/test_ue_memory_manager.py" \
+            2>&1 | tee "$OUT/ue_memory_manager_test.log"
+          grep -q '"passed": true' "$OUT/ue_memory_manager_test.log"
+
+      - name: Validate dynamic temporal data
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$NRX/scripts"
+          "$PY" "$STUDY/temporal_training_data.py" \
+            --gpu 0 \
+            --batch-size 4 \
+            --seq-len 4 \
+            --ebno-db 3.0 \
+            --ue-pool-size 4 \
+            --dynamic-scheduling \
+            --schedule-switch-prob 1.0 \
+            --schedule-reorder-prob 1.0 \
+            --seed 20260816 \
+            --validate \
+            --output-json "$OUT/dynamic_data_validation.json" \
+            2>&1 | tee "$OUT/dynamic_data_validation.log"
+          grep -q 'VALIDATION_PASSED' "$OUT/dynamic_data_validation.log"
+
+      - name: Run UE-aware connected sequence training smoke test
         shell: bash
         run: |
           set -euo pipefail
@@ -56,6 +92,10 @@ jobs:
             --memory-only-steps 2 \
             --batch-size 2 \
             --seq-len 4 \
+            --ue-pool-size 4 \
+            --memory-expiry-slots 3 \
+            --schedule-switch-prob 1.0 \
+            --schedule-reorder-prob 1.0 \
             --min-ebno-db 2.5 \
             --max-ebno-db 3.5 \
             --log-every 1 \
@@ -64,7 +104,22 @@ jobs:
             2>&1 | tee "$OUT/smoke.log"
 
           test -f "$OUT/training_summary.json"
-          grep -q '"passed": true' "$OUT/training_summary.json"
+          "$PY" - "$OUT/training_summary.json" <<'PY'
+          import json
+          import sys
+          p = sys.argv[1]
+          x = json.load(open(p))
+          assert x["architecture"] == "ue_identity_aware_temporal_memory_v2"
+          assert x["dynamic_scheduling"] is True
+          assert x["identity_routing_check"]["passed"] is True
+          assert x["temporal_gradient_check"]["passed"] is True
+          assert any(
+              row["schedule_change_fraction"] > 0.0
+              for row in x["history"]
+          )
+          print("SUMMARY_CHECK_PASSED")
+          PY
+
           echo '--- summary ---'
           cat "$OUT/training_summary.json"
 

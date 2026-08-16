@@ -46,6 +46,7 @@ jobs:
           echo "SRSRAN_SHA=$SHA" >> "$GITHUB_ENV"
 
           git -C "$SRC" diff --check
+          git -C "$SRC" status --short
           git -C "$SRC" diff --stat
           git -C "$SRC" diff
 
@@ -90,7 +91,9 @@ jobs:
           }
           CPP
 
-          c++ -std=c++17 -pthread -I"$SRC/include" \
+          c++ -std=c++17 -pthread \
+            -I"$SRC/include" \
+            -I"$SRC/external/fmt/include" \
             "$ROOT/crnti_hook_probe.cpp" -o "$ROOT/crnti_hook_probe"
           "$ROOT/crnti_hook_probe"
 
@@ -111,7 +114,6 @@ jobs:
           test -x "$BUILD/apps/gnb/gnb"
           "$BUILD/apps/gnb/gnb" --version 2>&1 | tee "$ROOT/gnb-version.txt" || true
           sha256sum "$BUILD/apps/gnb/gnb" | tee "$ROOT/gnb-sha256.txt"
-          strings "$BUILD/apps/gnb/gnb" | grep -q 'temporal_nrx_pusch_context' || true
           echo "SRSRAN_TEMPORAL_NRX_CRNTI_BUILD_PASSED"
 
       - name: Upload patched gNB and patch evidence

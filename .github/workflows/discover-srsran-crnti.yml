@@ -1,0 +1,37 @@
+name: Discover srsRAN C-RNTI Boundary
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/discover-srsran-crnti.yml'
+
+jobs:
+  discover:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 10
+    steps:
+      - name: Inspect local srsRAN and neural receiver integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$HOME/sionna-srsran"
+          echo '=== HOST ==='
+          hostname
+          echo '=== TOP LEVEL ==='
+          find "$ROOT" -maxdepth 2 -type d -name .git -print | sed 's#/.git$##' || true
+          echo '=== GIT REMOTES ==='
+          while IFS= read -r repo; do
+            echo "--- $repo"
+            git -C "$repo" remote -v || true
+            git -C "$repo" branch --show-current || true
+          done < <(find "$ROOT" -maxdepth 4 -type d -name .git -print | sed 's#/.git$##')
+
+          echo '=== LIKELY SRSRAN DIRECTORIES ==='
+          find "$ROOT" -maxdepth 4 -type d \( -iname '*srsran*' -o -iname '*srsRAN*' \) -print | head -100 || true
+
+          echo '=== NEURAL / PUSCH / RNTI HITS ==='
+          grep -RInE --exclude-dir=.git --exclude='*.log' --exclude='*.json' \
+            '(neural[_ -]?rx|neural receiver|pusch_processor|pusch.*pdu|rnti_t|c[_-]?rnti|crnti|\.rnti|rnti[ ;,)])' \
+            "$ROOT" 2>/dev/null | head -1200 || true

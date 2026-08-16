@@ -34,7 +34,8 @@ jobs:
             train_temporal_ue_memory.py \
             test_ue_memory_manager.py \
             test_crnti_memory_adapter.py \
-            test_temporal_nrx_runtime.py
+            test_temporal_nrx_runtime.py \
+            test_temporal_nrx_runtime_tensorflow.py
           do
             git -C "$NRX" show \
               "origin/experiment/temporal-ue-memory-training:scripts/$f" \
@@ -49,7 +50,8 @@ jobs:
             "$STUDY/train_temporal_ue_memory.py" \
             "$STUDY/test_ue_memory_manager.py" \
             "$STUDY/test_crnti_memory_adapter.py" \
-            "$STUDY/test_temporal_nrx_runtime.py"
+            "$STUDY/test_temporal_nrx_runtime.py" \
+            "$STUDY/test_temporal_nrx_runtime_tensorflow.py"
 
           echo "OUT=$OUT" >> "$GITHUB_ENV"
           echo "PY=$PY" >> "$GITHUB_ENV"
@@ -84,6 +86,16 @@ jobs:
           "$PY" "$STUDY/test_temporal_nrx_runtime.py" \
             2>&1 | tee "$OUT/temporal_nrx_runtime_test.log"
           grep -q '"passed": true' "$OUT/temporal_nrx_runtime_test.log"
+
+      - name: Test actual K2 TensorFlow NRX through C-RNTI runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$NRX/scripts"
+          "$PY" "$STUDY/test_temporal_nrx_runtime_tensorflow.py" \
+            2>&1 | tee "$OUT/temporal_nrx_tensorflow_runtime_test.log"
+          grep -q '"passed": true' "$OUT/temporal_nrx_tensorflow_runtime_test.log"
+          grep -q '"configured_k": 2' "$OUT/temporal_nrx_tensorflow_runtime_test.log"
 
       - name: Validate dynamic temporal data
         shell: bash

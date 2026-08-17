@@ -1,0 +1,111 @@
+name: Temporal UE Memory Research Suite
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/temporal-research-suite.yml'
+  workflow_dispatch:
+
+jobs:
+  research-suite:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 1380
+
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v4
+
+      - name: Checkout temporal neural_rx branch
+        uses: actions/checkout@v4
+        with:
+          repository: BestCody/neural_rx
+          ref: experiment/temporal-ue-memory-training
+          path: neural_rx_research_suite
+          fetch-depth: 1
+          lfs: true
+          submodules: recursive
+
+      - name: Verify research environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          PY="$HOME/miniforge3/envs/neural_rx/bin/python"
+          NRX="$GITHUB_WORKSPACE/neural_rx_research_suite"
+          SUITE_OUT="$HOME/sionna-srsran/temporal_reuse/research_suite"
+          "$PY" --version
+          nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+          "$PY" - <<'PY'
+          import tensorflow as tf
+          import sionna
+          print('tensorflow', tf.__version__)
+          print('gpus', tf.config.list_physical_devices('GPU'))
+          PY
+          "$PY" -m py_compile \
+            "$NRX/scripts/temporal_full_state.py" \
+            "$NRX/scripts/train_temporal_full_state.py" \
+            "$NRX/scripts/evaluate_temporal_full_state.py" \
+            "$NRX/scripts/evaluate_temporal_ue_memory_v2.py" \
+            "$NRX/scripts/run_temporal_research_suite.py"
+          mkdir -p "$SUITE_OUT"
+          echo "PY=$PY" >> "$GITHUB_ENV"
+          echo "NRX=$NRX" >> "$GITHUB_ENV"
+          echo "SUITE_OUT=$SUITE_OUT" >> "$GITHUB_ENV"
+
+      - name: Run complete 6000-step suite
+        working-directory: neural_rx_research_suite/scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$PY" run_temporal_research_suite.py \
+            --root "$SUITE_OUT" \
+            --gpu 0 \
+            --config nrx_large.cfg \
+            --train-steps 6000 \
+            --memory-only-steps 1000 \
+            --train-batch 8 \
+            --full-state-train-batch 4 \
+            --seq-len 4 \
+            --eval-batch 8 \
+            --full-state-eval-batch 4 \
+            --target-errors 120 \
+            --max-batches 32 \
+            --snr-min 1.5 \
+            --snr-max 3.75 \
+            --snr-step 0.25 \
+            --seed 20260816 \
+            --extra-seeds 20260817,20260818 \
+            --capacities 8,16,32,56 \
+            2>&1 | tee "$SUITE_OUT/research_suite.log"
+
+      - name: Verify final suite outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$SUITE_OUT/suite_summary.json"
+          test -f "$SUITE_OUT/all_results.csv"
+          test -f "$SUITE_OUT/graphs/compression_capacity_snr10.png"
+          test -f "$SUITE_OUT/graphs/gap_recovered_vs_capacity.png"
+          "$PY" - "$SUITE_OUT/suite_summary.json" <<'PY'
+          import json, sys
+          x=json.load(open(sys.argv[1]))
+          assert x['suite']=='temporal_ue_memory_complete_research_suite_v1'
+          assert x['train_steps_per_trained_configuration']==6000
+          assert x['capacities']==[8,16,32,56]
+          assert set(x['compressors'])=={'writer','pca','autoencoder'}
+          print('TEMPORAL_RESEARCH_SUITE_COMPLETE')
+          print(json.dumps(x['winner'], indent=2))
+          PY
+
+      - name: Upload summary and graphs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: temporal-research-suite-${{ github.run_id }}
+          path: |
+            ${{ env.SUITE_OUT }}/suite_summary.json
+            ${{ env.SUITE_OUT }}/all_results.csv
+            ${{ env.SUITE_OUT }}/graphs
+            ${{ env.SUITE_OUT }}/research_suite.log
+          if-no-files-found: warn
+          retention-days: 90

@@ -43,18 +43,20 @@ jobs:
             "$NRX/scripts/train_temporal_full_state.py" \
             "$NRX/scripts/evaluate_temporal_full_state.py" \
             "$NRX/scripts/evaluate_temporal_ue_memory_v2.py" \
-            "$NRX/scripts/run_temporal_research_suite.py"
+            "$NRX/scripts/train_temporal_ue_memory_v5_pca_pooler_calibrated.py" \
+            "$NRX/scripts/run_temporal_research_suite.py" \
+            "$NRX/scripts/run_temporal_research_suite_exhaustive.py"
           mkdir -p "$SUITE_OUT"
           echo "PY=$PY" >> "$GITHUB_ENV"
           echo "NRX=$NRX" >> "$GITHUB_ENV"
           echo "SUITE_OUT=$SUITE_OUT" >> "$GITHUB_ENV"
 
-      - name: Run complete 6000-step suite on both A40s
+      - name: Run exhaustive 6000-step suite on both A40s
         working-directory: neural_rx_research_suite/scripts
         shell: bash
         run: |
           set -euo pipefail
-          "$PY" run_temporal_research_suite.py \
+          "$PY" run_temporal_research_suite_exhaustive.py \
             --root "$SUITE_OUT" \
             --gpus 0,1 \
             --config nrx_large.cfg \
@@ -81,18 +83,20 @@ jobs:
           set -euo pipefail
           test -f "$SUITE_OUT/suite_summary.json"
           test -f "$SUITE_OUT/all_results.csv"
-          test -f "$SUITE_OUT/graphs/compression_capacity_snr10.png"
-          test -f "$SUITE_OUT/graphs/gap_recovered_vs_capacity.png"
+          test -f "$SUITE_OUT/graphs/factorial_snr10.png"
+          test -f "$SUITE_OUT/graphs/factorial_gap_recovered.png"
           "$PY" - "$SUITE_OUT/suite_summary.json" <<'PY'
           import json, sys
           x=json.load(open(sys.argv[1]))
-          assert x['suite']=='temporal_ue_memory_complete_research_suite_v2_dual_gpu'
+          assert x['suite']=='temporal_ue_memory_exhaustive_factorial_v1_calibrated_pca'
           assert x['gpus']==[0,1]
           assert x['parallel_gpu_count']==2
           assert x['train_steps_per_trained_configuration']==6000
           assert x['capacities']==[8,16,32,56]
+          assert set(x['poolings'])=={'mean','attention','cnn'}
           assert set(x['compressors'])=={'writer','pca','autoencoder'}
-          print('TEMPORAL_RESEARCH_SUITE_COMPLETE_DUAL_GPU')
+          assert x['base_factorial_training_count']==36
+          print('TEMPORAL_RESEARCH_SUITE_EXHAUSTIVE_COMPLETE')
           print(json.dumps(x['winner'], indent=2))
           PY
 

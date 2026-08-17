@@ -1,0 +1,90 @@
+name: Temporal Sionna Audit Once
+
+on:
+  push:
+    paths:
+      - '.github/workflows/temporal-sionna-audit-once.yml'
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout temporal neural_rx branch
+        uses: actions/checkout@v4
+        with:
+          repository: BestCody/neural_rx
+          ref: experiment/temporal-ue-memory-training
+          path: neural_rx_audit
+          fetch-depth: 1
+          lfs: false
+          submodules: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Sionna runtime dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install 'sionna==0.18.0' matplotlib pandas
+
+      - name: Validate dynamic temporal data generation on CPU
+        shell: bash
+        env:
+          CUDA_VISIBLE_DEVICES: '-1'
+          TF_CPP_MIN_LOG_LEVEL: '2'
+        run: |
+          set -euo pipefail
+          cd neural_rx_audit/scripts
+          python temporal_training_data.py \
+            --config nrx_large.cfg \
+            --batch-size 2 \
+            --seq-len 4 \
+            --ebno-db 3.0 \
+            --seed 20260816 \
+            --ue-pool-size 4 \
+            --dynamic-scheduling \
+            --schedule-switch-prob 1.0 \
+            --schedule-reorder-prob 1.0 \
+            --validate
+
+      - name: Validate active research CLI imports without training
+        shell: bash
+        env:
+          CUDA_VISIBLE_DEVICES: '-1'
+          TF_CPP_MIN_LOG_LEVEL: '2'
+        run: |
+          set -euo pipefail
+          cd neural_rx_audit/scripts
+          python run_temporal_research_suite_exhaustive_v4.py --help >/tmp/suite_help.txt
+          grep -q -- '--capacities' /tmp/suite_help.txt
+          grep -q -- '--extra-seeds' /tmp/suite_help.txt
+          python evaluate_temporal_ue_memory_v2.py --help >/tmp/eval_help.txt
+          grep -q -- '--checkpoint' /tmp/eval_help.txt
+          python evaluate_temporal_full_state.py --help >/tmp/full_help.txt
+          grep -q -- '--checkpoint' /tmp/full_help.txt
+
+      - name: Confirm rejected shared-pooler entry points are disabled
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd neural_rx_audit/scripts
+          set +e
+          python run_temporal_research_suite_exhaustive_v2.py >/tmp/v2.out 2>&1
+          RC1=$?
+          python train_temporal_ue_memory_v6_pca_shared_pooler.py >/tmp/v6.out 2>&1
+          RC2=$?
+          python calibrate_temporal_pooler.py >/tmp/cal.out 2>&1
+          RC3=$?
+          set -e
+          test "$RC1" -ne 0
+          test "$RC2" -ne 0
+          test "$RC3" -ne 0
+          grep -q 'DEPRECATED' /tmp/v2.out
+          grep -q 'DEPRECATED' /tmp/v6.out
+          grep -q 'DEPRECATED' /tmp/cal.out

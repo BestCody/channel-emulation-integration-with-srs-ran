@@ -39,6 +39,7 @@ jobs:
           assert len(tf.config.list_physical_devices('GPU')) >= 2, 'dual-GPU suite requires both A40s visible'
           PY
           "$PY" -m py_compile \
+            "$NRX/scripts/temporal_eval_metrics.py" \
             "$NRX/scripts/temporal_full_state.py" \
             "$NRX/scripts/train_temporal_full_state.py" \
             "$NRX/scripts/evaluate_temporal_full_state.py" \
@@ -47,7 +48,8 @@ jobs:
             "$NRX/scripts/train_temporal_ue_memory_v7_pca_capacity_tuned_pooler.py" \
             "$NRX/scripts/run_temporal_research_suite.py" \
             "$NRX/scripts/run_temporal_research_suite_exhaustive.py" \
-            "$NRX/scripts/run_temporal_research_suite_exhaustive_v3.py"
+            "$NRX/scripts/run_temporal_research_suite_exhaustive_v3.py" \
+            "$NRX/scripts/run_temporal_research_suite_exhaustive_v4.py"
           mkdir -p "$SUITE_OUT"
           echo "PY=$PY" >> "$GITHUB_ENV"
           echo "NRX=$NRX" >> "$GITHUB_ENV"
@@ -58,7 +60,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          "$PY" run_temporal_research_suite_exhaustive_v3.py \
+          "$PY" run_temporal_research_suite_exhaustive_v4.py \
             --root "$SUITE_OUT" \
             --gpus 0,1 \
             --config nrx_large.cfg \
@@ -90,7 +92,7 @@ jobs:
           "$PY" - "$SUITE_OUT/suite_summary.json" <<'PY'
           import json, sys
           x=json.load(open(sys.argv[1]))
-          assert x['suite']=='temporal_ue_memory_exhaustive_factorial_v3_capacity_tuned_pca'
+          assert x['suite']=='temporal_ue_memory_exhaustive_factorial_v4_strict_resume'
           assert x['gpus']==[0,1]
           assert x['parallel_gpu_count']==2
           assert x['train_steps_per_trained_configuration']==6000
@@ -100,6 +102,7 @@ jobs:
           assert x['base_factorial_training_count']==36
           assert x['pca_pooler_shared_across_capacities'] is False
           assert x['pca_pooler_tuned_per_capacity'] is True
+          assert x['strict_artifact_validation']['training_seed_required'] is True
           print('TEMPORAL_RESEARCH_SUITE_EXHAUSTIVE_COMPLETE')
           print(json.dumps(x['winner'], indent=2))
           PY

@@ -5,7 +5,7 @@ on:
     paths:
       - '.github/workflows/temporal-static-audit-once.yml'
 
-# Audit iteration 3: latest temporal-memory branch after logic/provenance fixes.
+# Audit iteration 4: final latest-branch pass after legacy-path cleanup.
 jobs:
   audit:
     runs-on: ubuntu-latest

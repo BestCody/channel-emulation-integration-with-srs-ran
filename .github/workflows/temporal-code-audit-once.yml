@@ -1,0 +1,74 @@
+name: Temporal Code Audit Once
+
+on:
+  push:
+    paths:
+      - '.github/workflows/temporal-code-audit-once.yml'
+
+jobs:
+  audit:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout integration repo
+        uses: actions/checkout@v4
+
+      - name: Checkout temporal neural_rx branch
+        uses: actions/checkout@v4
+        with:
+          repository: BestCody/neural_rx
+          ref: experiment/temporal-ue-memory-training
+          path: neural_rx_audit
+          fetch-depth: 1
+          lfs: true
+          submodules: recursive
+
+      - name: Compile temporal Python code
+        shell: bash
+        run: |
+          set -euo pipefail
+          PY="$HOME/miniforge3/envs/neural_rx/bin/python"
+          NRX="$GITHUB_WORKSPACE/neural_rx_audit"
+          cd "$NRX"
+          "$PY" -m py_compile \
+            scripts/temporal_*.py \
+            scripts/*ue_memory*.py \
+            scripts/crnti_memory_adapter.py \
+            scripts/run_temporal_research_suite*.py \
+            scripts/test_temporal_*.py \
+            scripts/test_ue_memory_manager.py \
+            scripts/test_crnti_memory_adapter.py
+
+      - name: Run lightweight temporal unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          PY="$HOME/miniforge3/envs/neural_rx/bin/python"
+          NRX="$GITHUB_WORKSPACE/neural_rx_audit"
+          cd "$NRX/scripts"
+          "$PY" test_temporal_pooling.py
+          "$PY" test_temporal_compression.py
+          "$PY" test_ue_memory_manager.py
+          "$PY" test_crnti_memory_adapter.py
+          "$PY" test_temporal_nrx_runtime.py
+
+      - name: Run TensorFlow temporal runtime smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          PY="$HOME/miniforge3/envs/neural_rx/bin/python"
+          NRX="$GITHUB_WORKSPACE/neural_rx_audit"
+          cd "$NRX/scripts"
+          "$PY" test_temporal_nrx_runtime_tensorflow.py
+
+      - name: Validate active exhaustive-suite CLI without training
+        shell: bash
+        run: |
+          set -euo pipefail
+          PY="$HOME/miniforge3/envs/neural_rx/bin/python"
+          NRX="$GITHUB_WORKSPACE/neural_rx_audit"
+          cd "$NRX/scripts"
+          "$PY" run_temporal_research_suite_exhaustive_v3.py --help >/tmp/temporal_suite_help.txt
+          grep -q -- '--capacities' /tmp/temporal_suite_help.txt
+          grep -q -- '--extra-seeds' /tmp/temporal_suite_help.txt

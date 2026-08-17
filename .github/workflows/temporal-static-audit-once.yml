@@ -33,12 +33,24 @@ jobs:
           cd neural_rx_audit
           python -m compileall -q scripts utils
 
-      - name: Install CPU test dependency
+      - name: Install audit dependencies
         shell: bash
         run: |
           set -euo pipefail
           python -m pip install --upgrade pip
-          python -m pip install 'tensorflow-cpu==2.15.1'
+          python -m pip install 'tensorflow-cpu==2.15.1' ruff
+
+      - name: Check temporal code for undefined names
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd neural_rx_audit
+          ruff check \
+            scripts/temporal_*.py \
+            scripts/*ue_memory*.py \
+            scripts/crnti_memory_adapter.py \
+            scripts/run_temporal_research_suite*.py \
+            --select E9,F63,F7,F82
 
       - name: Run CPU-safe temporal unit tests
         shell: bash
@@ -48,6 +60,7 @@ jobs:
         run: |
           set -euo pipefail
           cd neural_rx_audit/scripts
+          python test_temporal_eval_metrics.py
           python test_temporal_pooling.py
           python test_temporal_compression.py
           python test_ue_memory_manager.py

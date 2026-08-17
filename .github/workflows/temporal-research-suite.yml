@@ -1,10 +1,6 @@
 name: Temporal UE Memory Research Suite
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/temporal-research-suite.yml'
   workflow_dispatch:
 
 jobs:

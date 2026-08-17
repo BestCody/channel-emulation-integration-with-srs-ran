@@ -43,9 +43,12 @@ jobs:
             "$NRX/scripts/train_temporal_full_state.py" \
             "$NRX/scripts/evaluate_temporal_full_state.py" \
             "$NRX/scripts/evaluate_temporal_ue_memory_v2.py" \
+            "$NRX/scripts/calibrate_temporal_pooler.py" \
             "$NRX/scripts/train_temporal_ue_memory_v5_pca_pooler_calibrated.py" \
+            "$NRX/scripts/train_temporal_ue_memory_v6_pca_shared_pooler.py" \
             "$NRX/scripts/run_temporal_research_suite.py" \
-            "$NRX/scripts/run_temporal_research_suite_exhaustive.py"
+            "$NRX/scripts/run_temporal_research_suite_exhaustive.py" \
+            "$NRX/scripts/run_temporal_research_suite_exhaustive_v2.py"
           mkdir -p "$SUITE_OUT"
           echo "PY=$PY" >> "$GITHUB_ENV"
           echo "NRX=$NRX" >> "$GITHUB_ENV"
@@ -56,7 +59,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          "$PY" run_temporal_research_suite_exhaustive.py \
+          "$PY" run_temporal_research_suite_exhaustive_v2.py \
             --root "$SUITE_OUT" \
             --gpus 0,1 \
             --config nrx_large.cfg \
@@ -88,7 +91,7 @@ jobs:
           "$PY" - "$SUITE_OUT/suite_summary.json" <<'PY'
           import json, sys
           x=json.load(open(sys.argv[1]))
-          assert x['suite']=='temporal_ue_memory_exhaustive_factorial_v1_calibrated_pca'
+          assert x['suite']=='temporal_ue_memory_exhaustive_factorial_v2_shared_calibrated_pca'
           assert x['gpus']==[0,1]
           assert x['parallel_gpu_count']==2
           assert x['train_steps_per_trained_configuration']==6000
@@ -96,6 +99,7 @@ jobs:
           assert set(x['poolings'])=={'mean','attention','cnn'}
           assert set(x['compressors'])=={'writer','pca','autoencoder'}
           assert x['base_factorial_training_count']==36
+          assert set(x['shared_pooler_calibrations'])=={'attention','cnn'}
           print('TEMPORAL_RESEARCH_SUITE_EXHAUSTIVE_COMPLETE')
           print(json.dumps(x['winner'], indent=2))
           PY
@@ -110,5 +114,6 @@ jobs:
             ${{ env.SUITE_OUT }}/all_results.csv
             ${{ env.SUITE_OUT }}/graphs
             ${{ env.SUITE_OUT }}/research_suite.log
+            ${{ env.SUITE_OUT }}/pooler_calibration
           if-no-files-found: warn
           retention-days: 90

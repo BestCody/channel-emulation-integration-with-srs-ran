@@ -5,7 +5,7 @@ on:
     paths:
       - '.github/workflows/temporal-static-audit-once.yml'
 
-# Audit iteration 4: final latest-branch pass after legacy-path cleanup.
+# Audit iteration 5: latest branch after C-RNTI slot-binding hardening.
 jobs:
   audit:
     runs-on: ubuntu-latest

@@ -14,14 +14,14 @@ jobs:
   cancel:
     runs-on: ubuntu-latest
     steps:
-      - name: Cancel active and queued temporal experiment runs
+      - name: Cancel obsolete temporal experiment and audit runs
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          for RUN_ID in 31982381770 31983142349; do
+          for RUN_ID in 31982381770 31983142349 31988260476; do
             echo "Cancelling $RUN_ID"
             curl --fail-with-body -L \
               -X POST \

@@ -35,7 +35,7 @@ jobs:
           echo "host=$(hostname) user=$(whoami)"
           test "$(hostname)" = "atlas-gpu01"
           test -x "$NRX_PYTHON"
-          test -d "$NRX_REPO/.git"
+          git -C "$NRX_REPO" rev-parse --is-inside-work-tree >/dev/null
           test -f "$SUITE_ROOT/suite_summary.json"
           test -f "$SUITE_ROOT/all_results.csv"
 
@@ -78,8 +78,8 @@ jobs:
                   'snr_max_tbler': c.get('temporal_bler_at_snr_max'),
                   'min_tbler': c.get('temporal_min_bler'),
                   'flags': c.get('flags'),
-                  'training_rows': c.get('training_rows'),
-                  'gradient_checks': c.get('gradient_checks'),
+                  'training_history': c.get('training_history'),
+                  'training_metadata': c.get('training_metadata'),
               }, sort_keys=True))
           PY
 

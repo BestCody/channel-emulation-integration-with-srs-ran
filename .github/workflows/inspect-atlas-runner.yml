@@ -45,3 +45,5 @@ jobs:
           git add results/atlas_runner_probe/runners.json results/atlas_runner_probe/runs.json
           git commit -m "results: inspect Atlas runner queue" || exit 0
           git push origin HEAD:main
+
+# refreshed 2026-08-19

@@ -10,7 +10,7 @@ on:
 
 jobs:
   diagnose-autoencoder:
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 15
     env:
       NRX_PYTHON: /home/h3lou/miniforge3/envs/neural_rx/bin/python
@@ -22,6 +22,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "host=$(hostname) user=$(whoami)"
+          test "$(hostname)" = "atlas-gpu01"
           test -x "$NRX_PYTHON"
           test -d "$NRX_REPO/.git"
           test -f "$SUITE_ROOT/suite_summary.json"

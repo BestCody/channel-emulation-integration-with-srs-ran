@@ -1,0 +1,47 @@
+name: Inspect Atlas Runner
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/inspect-atlas-runner.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Inspect runner and recent Actions runs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p results/atlas_runner_probe
+          gh api "repos/$GITHUB_REPOSITORY/actions/runners" \
+            --jq '{runners: [.runners[] | {id,name,os,status,busy,labels:[.labels[].name]}]}' \
+            > results/atlas_runner_probe/runners.json
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs?per_page=30" \
+            --jq '{workflow_runs: [.workflow_runs[] | {id,name,path,event,status,conclusion,head_sha,run_number,created_at,updated_at}]}' \
+            > results/atlas_runner_probe/runs.json
+          cat results/atlas_runner_probe/runners.json
+          cat results/atlas_runner_probe/runs.json
+      - name: Persist probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add results/atlas_runner_probe/runners.json results/atlas_runner_probe/runs.json
+          git commit -m "results: inspect Atlas runner queue" || exit 0
+          git push origin HEAD:main

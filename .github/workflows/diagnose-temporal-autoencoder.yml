@@ -8,6 +8,9 @@ on:
       - .github/workflows/diagnose-temporal-autoencoder.yml
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   diagnose-autoencoder:
     runs-on: [self-hosted, Linux, X64]
@@ -18,6 +21,13 @@ jobs:
       SUITE_ROOT: /home/h3lou/sionna-srsran/temporal_reuse/research_suite
 
     steps:
+      - name: Checkout outer repository for result persistence
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          path: outer_repo
+
       - name: Validate Atlas inputs
         shell: bash
         run: |
@@ -72,6 +82,25 @@ jobs:
                   'gradient_checks': c.get('gradient_checks'),
               }, sort_keys=True))
           PY
+
+      - name: Persist diagnostic result in outer repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEST="$GITHUB_WORKSPACE/outer_repo/results/temporal_autoencoder_debug"
+          mkdir -p "$DEST"
+          cp "$RUNNER_TEMP/temporal-autoencoder-diagnostic/autoencoder_debug.json" "$DEST/autoencoder_debug.json"
+          cd "$GITHUB_WORKSPACE/outer_repo"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add results/temporal_autoencoder_debug/autoencoder_debug.json
+          if git diff --cached --quiet; then
+            echo "Diagnostic result unchanged"
+            exit 0
+          fi
+          git commit -m "results: persist temporal autoencoder diagnostic"
+          git pull --rebase origin main
+          git push origin HEAD:main
 
       - name: Upload diagnostic evidence
         uses: actions/upload-artifact@v4

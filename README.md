@@ -73,8 +73,8 @@ Apply as Kubernetes overlays. The MongoDB overlay includes the static 1 GiB
 persistent volume used for subscriber data, so no external storage provisioner
 is needed on this single-node testbed.
 
-The MongoDB manifests retain `storageClassName: longhorn` as a **legacy matching
-label** so existing deployments such as `atlas-gpu01` remain compatible. The
+The MongoDB manifests retain `storageClassName: longhorn` as the **established
+matching label** so existing deployments such as `atlas-gpu01` remain compatible. The
 volume itself is a normal Kubernetes `hostPath` volume, not a Longhorn volume.
 Do not delete an existing MongoDB PVC/PV just to rename that label; doing so can
 remove the saved Open5GS subscriber database.

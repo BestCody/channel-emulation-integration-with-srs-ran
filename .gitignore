@@ -1,6 +1,19 @@
 # Python bytecode caches
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Generated evaluation run outputs
 results/
+
+# Generated srsRAN build worktrees
+/srsran_temporal_nrx_build_*/
+
+# Testbed installer dependency checkout
+/srsran_open5gs/testbed-automator/build/
+
+# Runtime logs and transient process files
+*.log
+*.pid

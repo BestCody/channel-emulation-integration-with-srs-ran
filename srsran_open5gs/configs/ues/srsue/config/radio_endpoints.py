@@ -71,7 +71,7 @@ def gnb_antennas():
 
 
 def gnb_downlink_endpoint(antenna=0):
-    # antenna 0 keeps the legacy endpoint/port
+    # Antenna 0 keeps the established single-antenna endpoint/port.
     if antenna == 0:
         return _endpoint(
             "SRSRAN_ZMQ_GNB_DOWNLINK_ENDPOINT",

@@ -165,7 +165,7 @@ class MovingSionnaScene:
             "transmitter_position": _point_json(self.transmitter.position),
             "receiver_position": _point_json(self.receiver.position),
             "num_bs_ports": self.num_bs_ports,
-            # port 0 stays under the legacy key
+            # Port 0 keeps the original single-port key.
             "conversion": conversions[0],
             "conversions": conversions,
         }

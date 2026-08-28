@@ -1,6 +1,6 @@
 # Temporal NRX C-RNTI Runtime Integration
 
-This document defines the live identity/memory boundary for the temporal UE-memory receiver implemented in `BestCody/neural_rx` on branch `experiment/temporal-ue-memory-training`.
+This document defines the live identity/memory boundary for the temporal UE-memory receiver implemented in the repository's `neural_rx` submodule.
 
 ## Ownership rule
 
@@ -33,7 +33,7 @@ CRNTIMemoryAdapter.lookup(crntis, slot)
         +--> valid       [U]
         |
         v
-TemporalUEMemoryCGNN, K=2
+TemporalUEMemoryCGNN, deployment K=1 or K=2
         |
         +--> decoded LLRs/result
         +--> next_memory [U, d_mem]
@@ -117,7 +117,7 @@ next_memory [U, d_mem]
 
 under the same immutable C-RNTI keys after inference.
 
-`TensorFlowTemporalInference` in `temporal_nrx_runtime.py` adapts the existing `TemporalUEMemoryCGNN` preprocessing, K-step model call, and LLR demapping to this runtime contract. It accepts both the original three-output temporal model and the newer compressor variants that return auxiliary losses.
+`TensorFlowTemporalInference` in `temporal_nrx_runtime.py` adapts the current `TemporalUEMemoryCGNN` preprocessing, K-step model call, and LLR demapping to this runtime contract. The current model returns decoded LLRs, a channel estimate, next memory, compression auxiliary loss, and reconstruction error.
 
 ## Concurrency policy
 

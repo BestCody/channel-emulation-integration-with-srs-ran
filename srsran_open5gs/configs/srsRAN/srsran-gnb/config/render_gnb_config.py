@@ -54,7 +54,7 @@ def _endpoint(env_name, addr, port):
 
 
 def _antenna_endpoints(gnb_zmq_addr, ue_zmq_addr, antennas):
-    # antenna 0 keeps the legacy endpoints/ports
+    # Antenna 0 keeps the established single-antenna endpoints/ports.
     downlink_base = _env_int("SRSRAN_ZMQ_GNB_DOWNLINK_PORT", 2000)
     uplink_base = _env_int("SRSRAN_ZMQ_GNB_UPLINK_PORT", 2001)
     downlinks = [_endpoint(

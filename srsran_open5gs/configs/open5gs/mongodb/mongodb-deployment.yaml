@@ -76,7 +76,7 @@ spec:
     - metadata:
         name: datadir
       spec:
-        # Legacy matching label retained for compatibility with existing
+        # Established matching label retained for compatibility with existing
         # deployments. The matching PV is a static hostPath volume; Longhorn
         # itself is not installed or required.
         storageClassName: longhorn

@@ -40,8 +40,6 @@ spec:
         volumeMounts:
         - mountPath: /open5gs/config/
           name: upf-volume
-        - name: host-mount
-          mountPath: /mnt/
         ports:
         - containerPort: 8805
           name: n4
@@ -65,7 +63,3 @@ spec:
           - key: wrapper.sh
             path: wrapper.sh
             mode: 0777
-      - name: host-mount
-        hostPath:
-          path: /mnt/
-          type: Directory

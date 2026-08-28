@@ -5,15 +5,10 @@ from .settings import PORT_FORWARD, PORT_FORWARD_STREAM
 
 
 def _port_forward_display():
-    mappings = []
-    for value in (PORT_FORWARD, PORT_FORWARD_STREAM):
-        if value and value not in mappings:
-            mappings.append(value)
-    return ", ".join(mappings) or "configured control port"
+    return f"{PORT_FORWARD}, {PORT_FORWARD_STREAM}"
 
 
-def condition_plan(condition, parameters=None):
-    parameters = parameters or {}
+def condition_plan(condition):
     port_forward = _port_forward_display()
     propagation = condition.get("propagation", {})
     effects = ", ".join(f"{key}={value}" for key, value in sorted(propagation.items())) or "all RT effects off"
@@ -49,7 +44,7 @@ def study_plan(resolved_study):
         actions.append({
             "condition_id": condition["condition_id"],
             "trial_count": resolved_study["trials_per_condition"],
-            "actions": condition_plan(condition, resolved_study.get("parameters")),
+            "actions": condition_plan(condition),
             "after_success": "restore deployment and validate only; do not reconnect radio",
             "after_failure": "restore, run recovery check, then stop study",
         })

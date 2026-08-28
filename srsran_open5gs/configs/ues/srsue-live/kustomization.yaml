@@ -28,17 +28,14 @@ patches:
         path: /spec/template/spec/containers/0/imagePullPolicy
         value: Never
       - op: add
-        path: /spec/template/spec/containers/0/ports/-
+        path: /spec/template/spec/containers/0/ports
         value:
-          name: channel-control
-          containerPort: 5555
-          protocol: TCP
-      - op: add
-        path: /spec/template/spec/containers/0/ports/-
-        value:
-          name: channel-stream
-          containerPort: 5556
-          protocol: TCP
+          - name: channel-control
+            containerPort: 5555
+            protocol: TCP
+          - name: channel-stream
+            containerPort: 5556
+            protocol: TCP
       - op: add
         path: /spec/template/spec/volumes/0/configMap/items/-
         value:

@@ -6,22 +6,18 @@ import struct
 from dataclasses import dataclass
 
 
-PROTOCOL_VERSION = 2
-# Dense CIR caps track the engine ring buffer
+PROTOCOL_VERSION = 3
+# Dense CIR limits match the ring buffer.
 MAX_CHANNEL_LEN = 1024
 MAX_TAPS = MAX_CHANNEL_LEN
 MAX_DELAY = MAX_CHANNEL_LEN - 1
 MAX_MESSAGE_BYTES = 1024 * 1024
 NOISE_SIGMA_MAX = 512.0
 VALID_DIRECTIONS = {"both", "downlink", "uplink"}
-# UE addressing: 0 = all UEs, k = UE k (1-based)
+# UE index 0 targets all UEs.
 MAX_UES = 64
-# gNB antenna addressing: 0 = all, k = antenna k (1-based)
-MAX_BS_ANTENNAS = 8
-
-# Latest CIR stream frame wins
 _FRAME_MAGIC = b"SCIR"
-_FRAME_HEADER = struct.Struct("<4sBBBBBQQdI")
+_FRAME_HEADER = struct.Struct("<4sBBBBQQdI")
 _FRAME_TAP = struct.Struct("<Idd")
 _MSG_CHANNEL_UPDATE = 1
 _DIRECTION_CODES = {"both": 0, "downlink": 1, "uplink": 2}
@@ -42,7 +38,6 @@ class ChannelUpdate:
     client_send_ns: int
     noise_sigma: float
     ue_index: int
-    bs_index: int
 
 
 def strict_integer(value, field):
@@ -127,19 +122,15 @@ def parse_update(message):
     if direction not in VALID_DIRECTIONS:
         raise ValueError(f"invalid direction: {direction}")
     client_send_ns = strict_integer(
-        message.get("client_send_ns", 0),
+        message.get("client_send_ns"),
         "client_send_ns",
     )
     if client_send_ns < 0:
         raise ValueError("client_send_ns cannot be negative")
-    noise_sigma = strict_noise_sigma(message.get("noise_sigma", 0.0))
-    ue_index = strict_integer(message.get("ue_index", 0), "ue_index")
+    noise_sigma = strict_noise_sigma(message.get("noise_sigma"))
+    ue_index = strict_integer(message.get("ue_index"), "ue_index")
     if ue_index < 0 or ue_index > MAX_UES:
         raise ValueError(f"ue_index must be in 0..{MAX_UES}")
-    bs_index = strict_integer(message.get("bs_index", 0), "bs_index")
-    if bs_index < 0 or bs_index > MAX_BS_ANTENNAS:
-        raise ValueError(f"bs_index must be in 0..{MAX_BS_ANTENNAS}")
-
     allowed = {
         "version",
         "msg_type",
@@ -149,7 +140,6 @@ def parse_update(message):
         "client_send_ns",
         "noise_sigma",
         "ue_index",
-        "bs_index",
     }
     unknown = set(message) - allowed
     if unknown:
@@ -162,7 +152,6 @@ def parse_update(message):
         client_send_ns=client_send_ns,
         noise_sigma=noise_sigma,
         ue_index=ue_index,
-        bs_index=bs_index,
     )
 
 
@@ -173,7 +162,6 @@ def build_update(
     client_send_ns=0,
     noise_sigma=0.0,
     ue_index=0,
-    bs_index=0,
 ):
     taps = validate_taps(tuple(taps))
     message = {
@@ -192,7 +180,6 @@ def build_update(
         ],
         "client_send_ns": strict_integer(client_send_ns, "client_send_ns"),
         "ue_index": strict_integer(ue_index, "ue_index"),
-        "bs_index": strict_integer(bs_index, "bs_index"),
     }
     parse_update(message)
     return message
@@ -202,18 +189,17 @@ def _encode_update_frame(message):
     direction = message.get("direction")
     if direction not in _DIRECTION_CODES:
         raise ValueError(f"invalid direction: {direction}")
-    taps = message.get("taps") or []
+    taps = message["taps"]
     try:
         header = _FRAME_HEADER.pack(
             _FRAME_MAGIC,
             PROTOCOL_VERSION,
             _MSG_CHANNEL_UPDATE,
             _DIRECTION_CODES[direction],
-            int(message.get("ue_index", 0)),
-            int(message.get("bs_index", 0)),
+            int(message["ue_index"]),
             int(message["sequence"]),
-            int(message.get("client_send_ns", 0)),
-            float(message.get("noise_sigma", 0.0)),
+            int(message["client_send_ns"]),
+            float(message["noise_sigma"]),
             len(taps),
         )
         body = b"".join(
@@ -234,7 +220,6 @@ def _decode_update_frame(payload):
         msg_type,
         direction_code,
         ue_index,
-        bs_index,
         sequence,
         client_send_ns,
         noise_sigma,
@@ -265,7 +250,6 @@ def _decode_update_frame(payload):
         "taps": taps,
         "client_send_ns": client_send_ns,
         "ue_index": ue_index,
-        "bs_index": bs_index,
     }
 
 
@@ -302,7 +286,3 @@ def encode_message(message):
     if len(payload) > MAX_MESSAGE_BYTES:
         raise ValueError("message exceeds maximum size")
     return payload
-
-
-def identity_taps():
-    return (Tap(0, 1.0 + 0.0j),)

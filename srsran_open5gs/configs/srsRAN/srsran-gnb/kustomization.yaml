@@ -3,7 +3,6 @@ kind: Kustomization
 
 resources:
 - gnb-deployment.yaml
-- gnb-service.yaml
 
 configMapGenerator:
   - name: gnb-configmap

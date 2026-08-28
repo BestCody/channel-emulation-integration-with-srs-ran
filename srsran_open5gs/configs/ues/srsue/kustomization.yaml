@@ -4,7 +4,7 @@ resources:
 configMapGenerator:
   - name: ue1-configmap
     files:
-      - config/ue0.conf
+      - config/radio.json
       - config/radio_endpoints.py
       - config/multi_ue_scenario.py
       - config/generate_ue_conf.py

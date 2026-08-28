@@ -24,7 +24,7 @@ PROPAGATION_EFFECTS = (
 
 def _solver_options(solver):
     """Resolve toggles; default all effects off."""
-    options = dict(solver or {})
+    options = dict(solver)
     for effect in PROPAGATION_EFFECTS:
         options.setdefault(effect, False)
     return options
@@ -35,6 +35,7 @@ def _validate_scene_config(config):
         "scene",
         "transmitter",
         "receiver",
+        "placement",
         "antenna",
         "solver",
         "conversion",
@@ -42,36 +43,31 @@ def _validate_scene_config(config):
     missing = required - set(config)
     if missing:
         raise ValueError(f"scene config is missing {sorted(missing)}")
+    antenna = config["antenna"]
+    if not isinstance(antenna, dict):
+        raise ValueError("antenna must be an object")
+    unknown = set(antenna) - {"pattern", "polarization"}
+    if unknown:
+        raise ValueError(f"unsupported antenna fields: {sorted(unknown)}")
+    if antenna.get("polarization") not in {"V", "H"}:
+        raise ValueError("SISO polarization must be V or H")
+    if config["solver"].get("synthetic_array") is not True:
+        raise ValueError("the live SISO channel requires synthetic_array")
+    placement = config["placement"]
+    if not isinstance(placement, dict):
+        raise ValueError("placement must be an object")
+    if placement.get("mode") not in {"configured", "random"}:
+        raise ValueError("placement mode must be configured or random")
+    if "min_distance_m" not in placement:
+        raise ValueError("placement min_distance_m is required")
 
 
 def _distance(first, second):
     return math.sqrt(sum((float(a) - float(b)) ** 2 for a, b in zip(first, second)))
 
 
-def antenna_array_dims(antenna, key):
-    """Read panel dimensions, defaulting to 1x1."""
-    raw = antenna.get(key, [1, 1])
-    if not isinstance(raw, (list, tuple)) or len(raw) != 2:
-        raise ValueError(f"antenna {key} must be [rows, cols]")
-    dims = []
-    for value in raw:
-        if isinstance(value, bool) or float(value) != int(value):
-            raise ValueError(f"antenna {key} entries must be integers")
-        dims.append(int(value))
-    rows, cols = dims
-    if rows < 1 or cols < 1:
-        raise ValueError(f"antenna {key} entries must be positive")
-    return rows, cols
-
-
-def antenna_port_count(rows, cols, polarization):
-    ports = 2 if polarization == "cross" else 1
-    return rows * cols * ports
-
-
 def scene_bounding_box(scene_name):
     """Return the physical scene bounds."""
-    import mitsuba as mi
     from sionna.rt import load_scene
     from sionna.rt import scene as rt_scene
 
@@ -100,13 +96,13 @@ def _apply_random_placement(
     placement_seed=None,
     min_distance_m=None,
 ):
-    placement = config.get("placement", {})
-    if not isinstance(placement, dict):
-        raise ValueError("placement must be an object")
+    placement = config["placement"]
     seed = placement_seed if placement_seed is not None else placement.get("seed")
     lower, upper = bounds
     min_distance = float(
-        min_distance_m if min_distance_m is not None else placement.get("min_distance_m", 0.0)
+        min_distance_m
+        if min_distance_m is not None
+        else placement["min_distance_m"]
     )
     original = {
         "transmitter": copy.deepcopy(config["transmitter"].get("position")),
@@ -168,8 +164,8 @@ def load_scene_config(
     )
     _validate_scene_config(config)
     config = copy.deepcopy(config)
-    placement = config.get("placement", {})
-    mode = placement_mode or placement.get("mode", "configured")
+    placement = config["placement"]
+    mode = placement["mode"] if placement_mode is None else placement_mode
     if mode == "configured":
         config["resolved_placement"] = {
             "mode": "configured",

@@ -53,7 +53,7 @@ def parser():
         )
         command.add_argument(
             "--scene-set", action="append", default=[], dest="scene_overrides", metavar="KEY=VALUE",
-            help="override a scene value, e.g. --scene-set antenna.polarization=cross",
+            help="override a scene value, e.g. --scene-set antenna.polarization=V",
         )
         command.add_argument(
             "--profile-set", action="append", default=[], dest="profile_overrides", metavar="KEY=VALUE",

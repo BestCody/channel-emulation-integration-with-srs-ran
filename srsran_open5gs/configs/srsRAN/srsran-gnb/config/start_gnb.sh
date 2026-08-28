@@ -2,8 +2,6 @@
 
 set -Eeuo pipefail
 
-TEMPLATE="${GNB_CONFIG_TEMPLATE:-/srsran/config/srsran-gnb.yaml}"
-RENDERED="${GNB_CONFIG_RENDERED:-/tmp/srsran-gnb.yaml}"
-
-python3 /srsran/config/render_gnb_config.py "$TEMPLATE" "$RENDERED"
-exec /srsran/gnb -c "$RENDERED"
+python3 /srsran/config/render_gnb_config.py \
+  /srsran/config/srsran-gnb.yaml /tmp/srsran-gnb.yaml
+exec /srsran/gnb -c /tmp/srsran-gnb.yaml

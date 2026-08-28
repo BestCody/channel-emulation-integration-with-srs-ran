@@ -21,15 +21,11 @@ def block_status(block):
     }
 
 
-def _block_matrix(blocks, label):
-    # Blocks are indexed as [ue][bs_antenna].
-    matrix = [list(row) for row in blocks]
-    if not matrix or not matrix[0]:
+def _block_list(blocks, label):
+    values = list(blocks)
+    if not values:
         raise ValueError(f"at least one {label} channel is required")
-    width = len(matrix[0])
-    if any(len(row) != width for row in matrix):
-        raise ValueError(f"{label} channel matrix must be rectangular")
-    return matrix
+    return values
 
 
 class ChannelControlServer:
@@ -43,14 +39,11 @@ class ChannelControlServer:
     ):
         self.bind_endpoint = bind_endpoint
         self.stream_endpoint = stream_endpoint
-        self.downlinks = _block_matrix(downlinks, "downlink")
-        self.uplinks = _block_matrix(uplinks, "uplink")
+        self.downlinks = _block_list(downlinks, "downlink")
+        self.uplinks = _block_list(uplinks, "uplink")
         if len(self.downlinks) != len(self.uplinks):
             raise ValueError("downlink and uplink channel counts must match")
-        if len(self.downlinks[0]) != len(self.uplinks[0]):
-            raise ValueError("downlink and uplink antenna counts must match")
         self.num_ues = len(self.downlinks)
-        self.gnb_antennas = len(self.downlinks[0])
         self.sample_rate = float(sample_rate)
         self._stop_event = threading.Event()
         self._thread = None
@@ -86,7 +79,6 @@ class ChannelControlServer:
             "directions": ["both", "downlink", "uplink"],
             "per_symbol_channels": True,
             "num_ues": self.num_ues,
-            "gnb_antennas": self.gnb_antennas,
         }
 
     def status(self):
@@ -98,15 +90,8 @@ class ChannelControlServer:
             "last_set_us": self.last_set_us,
             "last_accepted_sequence": self.last_accepted_sequence,
             "num_ues": self.num_ues,
-            "gnb_antennas": self.gnb_antennas,
-            "downlink": [
-                [block_status(block) for block in row]
-                for row in self.downlinks
-            ],
-            "uplink": [
-                [block_status(block) for block in row]
-                for row in self.uplinks
-            ],
+            "downlink": [block_status(block) for block in self.downlinks],
+            "uplink": [block_status(block) for block in self.uplinks],
         }
 
     def _ue_slice(self, ue_index):
@@ -118,23 +103,13 @@ class ChannelControlServer:
             f"ue_index {ue_index} is outside 0..{self.num_ues}"
         )
 
-    def _bs_slice(self, bs_index):
-        if bs_index == 0:
-            return range(self.gnb_antennas)
-        if 1 <= bs_index <= self.gnb_antennas:
-            return (bs_index - 1,)
-        raise ValueError(
-            f"bs_index {bs_index} is outside 0..{self.gnb_antennas}"
-        )
-
-    def _selected_blocks(self, direction, ue_index, bs_index):
+    def _selected_blocks(self, direction, ue_index):
         blocks = []
         for ue in self._ue_slice(ue_index):
-            for bs in self._bs_slice(bs_index):
-                if direction in ("both", "downlink"):
-                    blocks.append(self.downlinks[ue][bs])
-                if direction in ("both", "uplink"):
-                    blocks.append(self.uplinks[ue][bs])
+            if direction in ("both", "downlink"):
+                blocks.append(self.downlinks[ue])
+            if direction in ("both", "uplink"):
+                blocks.append(self.uplinks[ue])
         return blocks
 
     def apply_update(self, update):
@@ -143,7 +118,7 @@ class ChannelControlServer:
         with self._transaction_lock:
             started = time.perf_counter_ns()
             for block in self._selected_blocks(
-                update.direction, update.ue_index, update.bs_index
+                update.direction, update.ue_index
             ):
                 block.set_channel(coefficients, delays, update.noise_sigma)
             self.last_set_us = (time.perf_counter_ns() - started) / 1000.0

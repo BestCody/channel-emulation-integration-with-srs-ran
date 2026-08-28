@@ -3,8 +3,6 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
-SPEED_OF_LIGHT = 299_792_458.0
-
 @dataclass(frozen=True)
 class TrajectoryPoint:
     index: int
@@ -105,39 +103,3 @@ def translate_trajectory(trajectory, offset):
         for point in trajectory.points
     )
     return Trajectory(trajectory.name, trajectory.update_interval_ns, points)
-
-
-def radio_motion_metrics(carrier_hz, speed_mps, interval_ns):
-    carrier_hz = float(carrier_hz)
-    speed_mps = float(speed_mps)
-    if carrier_hz <= 0.0 or not math.isfinite(carrier_hz):
-        raise ValueError("carrier frequency must be positive")
-    if speed_mps < 0.0 or not math.isfinite(speed_mps):
-        raise ValueError("speed must be non-negative")
-    wavelength = SPEED_OF_LIGHT / carrier_hz
-    doppler_hz = speed_mps / wavelength
-    interval_s = int(interval_ns) / 1e9
-    return {
-        "wavelength_m": wavelength,
-        "maximum_doppler_hz": doppler_hz,
-        "movement_per_update_m": speed_mps * interval_s,
-        "phase_change_rad": 2.0 * math.pi * doppler_hz * interval_s,
-        "phase_change_degrees": 360.0 * doppler_hz * interval_s,
-        "coherence_time_seconds": (
-            math.inf if doppler_hz == 0.0 else 0.423 / doppler_hz
-        ),
-    }
-
-
-def activation_sample(
-    first_movement_sample,
-    point_index,
-    update_interval_ns,
-    sample_rate,
-):
-    if point_index < 1:
-        raise ValueError("movement activation is only for positions 1+")
-    interval_from_first_ns = (point_index - 1) * int(update_interval_ns)
-    return int(first_movement_sample) + int(
-        round(interval_from_first_ns * float(sample_rate) / 1e9)
-    )

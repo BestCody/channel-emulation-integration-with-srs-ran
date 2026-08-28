@@ -1,6 +1,5 @@
 import argparse
 import copy
-import os
 import json
 import pathlib
 import sys
@@ -18,8 +17,6 @@ from channel_protocol import build_update
 from channel_protocol import validate_taps
 from sionna_moving import MovingSionnaScene
 from sionna_radio_config import load_radio_config
-from sionna_scene import antenna_array_dims
-from sionna_scene import antenna_port_count
 from sionna_scene import load_scene_config
 from sionna_scene import sample_ue_positions
 from sionna_scene import scene_bounding_box
@@ -52,29 +49,15 @@ def protocol_taps(conversion):
     return validate_taps(taps)
 
 
-def protocol_taps_per_port(point_report):
-    return tuple(
-        protocol_taps(conversion)
-        for conversion in point_report["conversions"]
-    )
-
-
-def stream_cir(client, taps, sequence, ue_index=0, bs_index=0):
+def stream_cir(client, taps, sequence, ue_index=0):
     message = build_update(
         taps=taps,
         sequence=sequence,
         direction="both",
         client_send_ns=time.time_ns(),
         ue_index=ue_index,
-        bs_index=bs_index,
     )
     client.stream(message)
-
-
-def scene_bs_ports(config):
-    antenna = config["antenna"]
-    rows, cols = antenna_array_dims(antenna, "bs_array")
-    return antenna_port_count(rows, cols, antenna["polarization"])
 
 
 def blend_to_protocol(previous_taps, current_taps, alpha):
@@ -104,7 +87,7 @@ def build_ue_setups(args, base_trajectory, num_ues):
     min_distance = (
         args.placement_min_distance
         if args.placement_min_distance is not None
-        else base.get("placement", {}).get("min_distance_m", 0.0)
+        else base["placement"]["min_distance_m"]
     )
     transmitter, receivers = sample_ue_positions(
         bounds,
@@ -146,68 +129,55 @@ def run_live(args, radio, ue_setups):
         )
         for ue_index, config, trajectory in ue_setups
     ]
-    num_bs_ports = scene_bs_ports(ue_setups[0][1])
     client = ChannelClient(args.endpoint, stream_endpoint=args.stream_endpoint)
     records = []
     try:
         config_response = client.get_config()
         if float(config_response["sample_rate"]) != radio.sample_rate:
             raise ValueError("live sample rate does not match")
-        if int(config_response.get("num_ues", 1)) != len(scenes):
+        if int(config_response["num_ues"]) != len(scenes):
             raise ValueError("live flowgraph UE count does not match")
-        if int(config_response.get("gnb_antennas", 1)) != num_bs_ports:
-            raise ValueError(
-                "live flowgraph gNB antenna count does not match "
-                "the scene bs_array"
-            )
-
         steps = max(1, int(args.interp_steps))
         update_interval_ns = scenes[0][2].update_interval_ns
         num_points = len(scenes[0][2].points)
         step_sleep_s = update_interval_ns / steps / 1e9
         sequence = int(client.get_status()["last_accepted_sequence"]) + 1
 
-        def stream_ports(ue_index, port_taps, index, alpha):
+        def stream_update(ue_index, taps, index, alpha):
             nonlocal sequence
-            for port, taps in enumerate(port_taps):
-                stream_cir(
-                    client, taps, sequence,
-                    ue_index=ue_index, bs_index=port + 1,
-                )
-                records.append({
-                    "ue_index": ue_index,
-                    "bs_index": port + 1,
-                    "index": index,
-                    "alpha": alpha,
-                    "tap_count": len(taps),
-                })
-                sequence += 1
+            stream_cir(client, taps, sequence, ue_index=ue_index)
+            records.append({
+                "ue_index": ue_index,
+                "index": index,
+                "alpha": alpha,
+                "tap_count": len(taps),
+            })
+            sequence += 1
 
         previous = {}
         for ue_index, scene, trajectory in scenes:
-            port_taps = protocol_taps_per_port(
-                scene.solve(trajectory.points[0])
+            taps = protocol_taps(
+                scene.solve(trajectory.points[0])["conversion"]
             )
-            stream_ports(ue_index, port_taps, 0, 1.0)
-            previous[ue_index] = port_taps
+            stream_update(ue_index, taps, 0, 1.0)
+            previous[ue_index] = taps
 
         epoch_created_ns = time.monotonic_ns()
         for index in range(1, num_points):
             current = {}
             for ue_index, scene, trajectory in scenes:
-                current[ue_index] = protocol_taps_per_port(
-                    scene.solve(trajectory.points[index])
+                current[ue_index] = protocol_taps(
+                    scene.solve(trajectory.points[index])["conversion"]
                 )
             for step in range(1, steps + 1):
                 alpha = step / steps
                 for ue_index, scene, trajectory in scenes:
-                    blended = tuple(
-                        blend_to_protocol(before, after, alpha)
-                        for before, after in zip(
-                            previous[ue_index], current[ue_index]
-                        )
+                    blended = blend_to_protocol(
+                        previous[ue_index],
+                        current[ue_index],
+                        alpha,
                     )
-                    stream_ports(ue_index, blended, index, alpha)
+                    stream_update(ue_index, blended, index, alpha)
                 time.sleep(step_sleep_s)
             previous = current
 
@@ -217,7 +187,6 @@ def run_live(args, radio, ue_setups):
             "schema_version": 1,
             "mode": "live-moving-channel-stream",
             "num_ues": len(scenes),
-            "gnb_antennas": num_bs_ports,
             "update_interval_ns": update_interval_ns,
             "interp_steps": steps,
             "per_symbol_channels": True,
@@ -253,16 +222,16 @@ def parse_args():
         default=str(REPO_ROOT / "configs/srsRAN/srsran-gnb/config/srsran-gnb.yaml"),
     )
     parser.add_argument(
-        "--ue-config",
-        default=str(REPO_ROOT / "configs/ues/srsue/config/ue0.conf"),
+        "--radio-config",
+        default=str(REPO_ROOT / "configs/ues/srsue/config/radio.json"),
     )
     parser.add_argument("--output", required=True)
     parser.add_argument("--placement-mode", choices=["configured", "random"])
     parser.add_argument("--placement-seed", type=int)
     parser.add_argument("--placement-min-distance", type=float)
     parser.add_argument("--num-ues", type=int, default=1)
-    parser.add_argument("--endpoint", default=os.environ.get("CHANNEL_CONTROL_ENDPOINT", "tcp://127.0.0.1:5555"))
-    parser.add_argument("--stream-endpoint", default=os.environ.get("CHANNEL_STREAM_ENDPOINT", "tcp://127.0.0.1:5556"))
+    parser.add_argument("--endpoint", default="tcp://127.0.0.1:5555")
+    parser.add_argument("--stream-endpoint", default="tcp://127.0.0.1:5556")
     parser.add_argument("--interp-steps", type=int, default=8)
     parser.add_argument("--final-hold-seconds", type=float, default=5.0)
     return parser.parse_args()
@@ -270,7 +239,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    radio = load_radio_config(args.gnb_config, args.ue_config)
+    radio = load_radio_config(args.gnb_config, args.radio_config)
     trajectory = load_trajectory(args.trajectory)
     num_ues = int(args.num_ues)
     if num_ues < 1:

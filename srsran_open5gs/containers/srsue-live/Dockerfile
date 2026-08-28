@@ -35,7 +35,7 @@ RUN cmake \
     && cmake --install /tmp/gr-sionna-channel/build \
     && ldconfig
 
-FROM localhost/srsue-sparse:gr38-v1
+FROM ghcr.io/sulaimanalmani/srsranzmq/srsue@sha256:7ede93eb1238df0f36afa65c3d963198beac0a4a3ec76f7b98bad2cd893614a4
 
 USER root
 

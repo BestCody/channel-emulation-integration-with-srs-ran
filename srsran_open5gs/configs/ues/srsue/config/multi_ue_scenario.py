@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0
 
+import signal
+import threading
+from argparse import ArgumentParser
+
 from gnuradio import blocks
 from gnuradio import gr
-import sys
-import signal
-from argparse import ArgumentParser
 from gnuradio import zeromq
 
 from radio_endpoints import gnb_downlink_endpoint
@@ -14,7 +15,7 @@ from radio_endpoints import ue_downlink_endpoint
 from radio_endpoints import ue_uplink_endpoint
 
 
-class multi_ue_scenario(gr.top_block):
+class MultiUeScenario(gr.top_block):
     def __init__(self, num_ues):
         gr.top_block.__init__(self, "srsRAN_multi_UE")
 
@@ -42,7 +43,11 @@ class multi_ue_scenario(gr.top_block):
 
         self.zeromq_req_sources = []
         self.zeromq_rep_sinks = []
-        self.blocks_throttle = blocks.throttle(gr.sizeof_gr_complex*1, samp_rate / slow_down_ratio, True)
+        self.blocks_throttle = blocks.throttle(
+            gr.sizeof_gr_complex,
+            samp_rate / slow_down_ratio,
+            True,
+        )
         self.blocks_add_xx = blocks.add_vcc(1)
 
         for i in range(num_ues):
@@ -71,29 +76,27 @@ class multi_ue_scenario(gr.top_block):
         self.connect((self.blocks_add_xx, 0), (self.zeromq_rep_sink_0_1, 0))
         self.connect((self.zeromq_req_source_0, 0), (self.blocks_throttle, 0))
 
+
 def main():
-    parser = ArgumentParser(description='srsRAN_multi_UE setup')
-    parser.add_argument('-n', '--num-ues', type=int, required=True, help='Number of UEs')
+    parser = ArgumentParser(description="srsRAN multi-UE setup")
+    parser.add_argument("-n", "--num-ues", type=int, required=True)
     args = parser.parse_args()
 
-    tb = multi_ue_scenario(args.num_ues)
+    flowgraph = MultiUeScenario(args.num_ues)
+    stop_event = threading.Event()
 
-    def sig_handler(sig=None, frame=None):
-        tb.stop()
-        tb.wait()
-        sys.exit(0)
+    def request_stop(sig=None, frame=None):
+        stop_event.set()
 
-    signal.signal(signal.SIGINT, sig_handler)
-    signal.signal(signal.SIGTERM, sig_handler)
+    signal.signal(signal.SIGINT, request_stop)
+    signal.signal(signal.SIGTERM, request_stop)
 
-    tb.start()
-
+    flowgraph.start()
     try:
-        input('Press Enter to quit: ')
-    except EOFError:
-        pass
-    tb.stop()
-    tb.wait()
+        stop_event.wait()
+    finally:
+        flowgraph.stop()
+        flowgraph.wait()
 
 
 if __name__ == '__main__':

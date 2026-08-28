@@ -27,10 +27,6 @@ SOLVER_TUNING_KEYS = {
     "seed",
 }
 SOLVER_KEYS = set(PROPAGATION_EFFECTS) | SOLVER_TUNING_KEYS
-DEFERRED_THROUGHPUT = {
-    "status": "deferred",
-    "reason": "No verified user-plane throughput endpoint exists",
-}
 
 
 class ConfigError(ValueError):
@@ -115,20 +111,6 @@ def source_record(path):
     }
 
 
-THROUGHPUT_STATUSES = {"deferred"}
-
-
-def validate_throughput(condition):
-    throughput = condition.get("throughput")
-    if not isinstance(throughput, dict):
-        raise ConfigError("every condition requires a throughput object")
-    if throughput.get("status") not in THROUGHPUT_STATUSES:
-        raise ConfigError(
-            f"throughput status {throughput.get('status')!r} is not supported; "
-            f"allowed: {sorted(THROUGHPUT_STATUSES)}"
-        )
-
-
 def _format_launcher(condition, parameters):
     launcher = condition.get("launcher")
     if launcher is None:
@@ -161,7 +143,6 @@ def validate_condition(condition, condition_path, parameters):
     if not condition.get("trajectory"):
         raise ConfigError(f"condition {condition_id} requires a trajectory")
 
-    validate_throughput(condition)
     _format_launcher(condition, parameters)
     return condition
 
@@ -173,18 +154,6 @@ def add_artifact(condition, key, artifacts):
     path = source_path(value, relative_to=REPO_ROOT)
     record = source_record(path)
     condition[f"{key}_resolved"] = record
-    artifacts.append(record)
-
-
-def add_nested_artifact(condition, keys, resolved_key, artifacts):
-    value = condition
-    for key in keys:
-        value = value.get(key) if isinstance(value, dict) else None
-    if value is None:
-        return
-    path = source_path(value, relative_to=REPO_ROOT)
-    record = source_record(path)
-    condition[resolved_key] = record
     artifacts.append(record)
 
 
@@ -325,7 +294,6 @@ def load_and_resolve_study(
     resolved["result_root"] = str(result_root)
     resolved["conditions"] = conditions
     resolved["trial_count"] = len(conditions) * study["trials_per_condition"]
-    resolved["throughput"] = dict(DEFERRED_THROUGHPUT)
     resolved["cli_overrides"] = {
         "parameters": copy.deepcopy(parameter_overrides or {}),
         "conditions": copy.deepcopy(condition_overrides or {}),

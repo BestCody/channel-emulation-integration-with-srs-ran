@@ -213,7 +213,13 @@ create_k8s_cluster() {
   sudo chown "$(id -u):$(id -g)" "${HOME}/.kube/config"
 
   timer_sec 60
-  kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule- || true
+  local taints
+  taints="$(kubectl get nodes -o jsonpath='{range .items[*].spec.taints[*]}{.key}={.effect}{"\n"}{end}')"
+  if grep -qx 'node-role.kubernetes.io/control-plane=NoSchedule' \
+      <<<"$taints"; then
+    kubectl taint nodes --all \
+      node-role.kubernetes.io/control-plane:NoSchedule-
+  fi
 }
 
 install_cni() {
@@ -251,11 +257,15 @@ install_multus() {
 }
 
 install_helm() {
-  local helm_version=""
-  helm_version="$(helm version --short 2>/dev/null || true)"
-  if [[ "$helm_version" == *"v3"* ]]; then
-    cecho YELLOW "Helm 3 is already installed."
-    return
+  if command -v helm >/dev/null 2>&1; then
+    local helm_version
+    helm_version="$(helm version --short)"
+    if [[ "$helm_version" == *"v3"* ]]; then
+      cecho YELLOW "Helm 3 is already installed."
+      return
+    fi
+    echo "An unsupported Helm version is installed: $helm_version" >&2
+    exit 1
   fi
 
   cecho GREEN "Installing Helm 3 ..."

@@ -1,16 +1,14 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  # Legacy name for the static hostPath PV.
-  name: mongodb-longhorn-pv
+  name: open5gs-mongodb-pv
 spec:
   capacity:
     storage: 1Gi
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
-  # This label must match the existing PVC.
-  storageClassName: longhorn
+  storageClassName: open5gs-local
   hostPath:
     path: /var/lib/mongo-pv/datadir-mongodb-0
     type: DirectoryOrCreate

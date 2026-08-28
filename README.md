@@ -9,6 +9,10 @@ It uses:
   bounces around a scene (walls, reflections, distance) and arrives at the
   receiver.
 
+The supported radio path is SISO: one gNB antenna and one antenna per UE.
+The evaluator can run multiple independent SISO UEs, but it does not provide
+MIMO channel emulation.
+
 ## What you need
 
 - A machine running **Ubuntu 24.04**, or Ubuntu 22.04 with Python 3.11+
@@ -18,8 +22,7 @@ It uses:
 - **Python 3.11 or newer**, as required by Sionna 2.0.1.
 - Local disk space for the MongoDB subscriber database. The included
   Kubernetes manifest uses a static `hostPath` volume at
-  `/var/lib/mongo-pv/datadir-mongodb-0`; **Longhorn is not installed or
-  required**.
+  `/var/lib/mongo-pv/datadir-mongodb-0`.
 
 ## Setting it up after cloning
 
@@ -74,6 +77,8 @@ EOF
 kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.17.1/deployments/static/nvidia-device-plugin.yml
 kubectl -n kube-system patch daemonset nvidia-device-plugin-daemonset \
   --type=json -p '[{"op":"add","path":"/spec/template/spec/runtimeClassName","value":"nvidia"}]'
+kubectl -n kube-system rollout status \
+  daemonset/nvidia-device-plugin-daemonset --timeout=180s
 
 # Confirm that the node advertises at least one GPU.
 kubectl get node -o jsonpath='{.items[0].status.allocatable.nvidia\.com/gpu}{"\n"}'
@@ -83,12 +88,6 @@ kubectl get node -o jsonpath='{.items[0].status.allocatable.nvidia\.com/gpu}{"\n
 Apply as Kubernetes overlays. The MongoDB overlay includes the static 1 GiB
 persistent volume used for subscriber data, so no external storage provisioner
 is needed on this single-node testbed.
-
-The MongoDB manifests retain `storageClassName: longhorn` as an established
-matching label for compatibility with deployments created from earlier versions.
-The volume itself is a normal Kubernetes `hostPath` volume, not a Longhorn volume.
-Do not delete an existing MongoDB PVC/PV just to rename that label; doing so can
-remove the saved Open5GS subscriber database.
 
 ```bash
 kubectl create namespace open5gs --dry-run=client -o yaml | kubectl apply -f -
@@ -111,19 +110,6 @@ The last command deploys the baseline UE. During an evaluation, the runner
 temporarily applies the live-channel UE overlay and restores the baseline UE
 afterward.
 
-Register the phone as a subscriber:
-
-The included subscriber and UE authentication values are public laboratory
-credentials. Replace them before connecting non-test equipment.
-
-```bash
-python3 -m pip install pymongo
-cd configs/open5gs/mongo-tools
-python3 modify-subscribers.py add
-python3 list-subscribers.py
-cd ../../..
-```
-
 **4. Create the Python environment for the ray tracing.**
 
 ```bash
@@ -133,11 +119,12 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 "$PYTHON_BIN" -m venv ~/sionna-env
 source ~/sionna-env/bin/activate
 python -m pip install --upgrade pip
-python -m pip install "sionna==2.0.1" "sionna-rt==2.0.1" pyzmq numpy
 
 # This build requires a driver compatible with CUDA 12.8.
 python -m pip install "torch==2.11.0" \
   --index-url https://download.pytorch.org/whl/cu128
+python -m pip install \
+  "sionna==2.0.1" "sionna-rt==2.0.1" pymongo pyzmq numpy
 
 python - <<'PY'
 import mitsuba as mi
@@ -156,7 +143,19 @@ PY
 Use the selector on the [PyTorch installation page](https://pytorch.org/get-started/locally/)
 if the host driver does not support the CUDA 12.8 build.
 
-**5. Check that the network and secondary interfaces are ready.**
+**5. Register the phone as a subscriber.**
+
+The included subscriber and UE authentication values are public laboratory
+credentials. Replace them before connecting non-test equipment.
+
+```bash
+cd configs/open5gs/mongo-tools
+python modify-subscribers.py add
+python list-subscribers.py
+cd ../../..
+```
+
+**6. Check that the network and secondary interfaces are ready.**
 
 ```bash
 kubectl get pods -n open5gs
@@ -172,11 +171,9 @@ All deployments must be available, and each interface command must print an
 `n3` address. The gNB and UE pods are idle control pods until the evaluator
 starts their radio processes.
 
-**6. Build the live-channel UE image.**
+**7. Build the live-channel UE image.**
 
 ```bash
-# Build the sparse channel block.
-sudo docker build -t localhost/srsue-sparse:gr38-v1 -f containers/srsue-channel/Dockerfile .
 # Build the live UE image.
 sudo docker build -t localhost/srsue-live:gr38-v1 -f containers/srsue-live/Dockerfile .
 # Import the live image into the Kubernetes image store.
@@ -213,17 +210,6 @@ per-test tables (CSV), plots (SVG), logs, and the exact resolved settings.
 A **study** is a JSON file describing what to test (for example
 `experiments/studies/live-siso.json`). You normally don't edit these by
 hand, you override values from the terminal instead, as shown below.
-
-For the two-port MIMO study, deploy the matching gNB overlay before running
-`live-mimo.json`:
-
-```bash
-kubectl apply -n open5gs -k configs/srsRAN/srsran-gnb-mimo
-python3 bin/evaluation-experiment.py run experiments/studies/live-mimo.json \
-  --namespace open5gs --confirm-live \
-  --condition-set propagation.los=true \
-  --condition-set propagation.specular_reflection=true
-```
 
 ## Terminal options
 
@@ -270,8 +256,6 @@ Example: `--set radio.ue_number=2 --set trials_per_condition=3`
 | `propagation.diffuse_reflection` | Turn on scattered reflections off rough surfaces. |
 | `propagation.refraction` | Turn on signal bending through materials. |
 | `propagation.diffraction` | Turn on bending around edges. |
-| `throughput.status` | `deferred` (throughput measurement is not run in-trial). |
-
 By default every propagation effect is off; you switch on the ones you want.
 
 Example: `--condition-set propagation.los=true --condition-set propagation.specular_reflection=true`
@@ -285,7 +269,7 @@ Example: `--condition-set propagation.los=true --condition-set propagation.specu
 | `receiver.position` | Phone location as `[x, y, z]` in metres. |
 | `receiver.velocity` | Phone velocity as `[vx, vy, vz]` in m/s. Adds Doppler to the channel. Default `[0,0,0]` (stationary). |
 | `antenna.pattern` | Antenna shape, e.g. `"iso"` (equal in all directions). |
-| `antenna.polarization` | Antenna polarization: `"V"` or `"H"`. `"cross"` is **not supported right now** — it makes a dual-port (2×2) antenna, but the streaming channel is single-antenna (SISO), so it fails with a coefficient/delay shape mismatch. |
+| `antenna.polarization` | Single-port antenna polarization: `"V"` or `"H"`. |
 | `solver.max_depth` | How many bounces to trace (higher = more detail, slower). |
 | `solver.samples_per_src` | How many rays to shoot (higher = more accurate, slower). |
 | `solver.seed` | Random seed for the ray tracing. |

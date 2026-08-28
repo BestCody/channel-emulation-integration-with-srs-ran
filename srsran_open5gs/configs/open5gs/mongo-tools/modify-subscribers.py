@@ -1,4 +1,3 @@
-from bson.objectid import ObjectId
 from open5gs import Open5GS
 from port_forwarding import run_with_port_forwarding
 from logger import log
@@ -13,21 +12,19 @@ DATA_DIR = "../data"
 def add_subscribers():
     with open(DATA_DIR + "/subscribers.json", "r") as file:
         subscribers = json.loads(file.read())
+    open5gs = Open5GS(MONGO_URI, MONGO_PORT)
     for subscriber_name, subscriber_info in subscribers.items():
-        Open5GS_1 = Open5GS(MONGO_URI, MONGO_PORT)
-        subscriber_info["_id"] = ObjectId()
-        Open5GS_1.add_subscriber(subscriber_info)
-        log.info(f"Added {subscriber_name}")
+        open5gs.add_subscriber(subscriber_info)
+        log.info(f"Registered {subscriber_name}")
 
 
 def delete_subscribers():
     with open(DATA_DIR + "/subscribers.json", "r") as file:
         subscribers = json.loads(file.read())
+    open5gs = Open5GS(MONGO_URI, MONGO_PORT)
     for subscriber_name, subscriber_info in subscribers.items():
-        Open5GS_1 = Open5GS(MONGO_URI, MONGO_PORT)
-        subscriber_info["_id"] = ObjectId()
         imsi = subscriber_info["imsi"]
-        Open5GS_1.delete_subscriber(imsi)
+        open5gs.delete_subscriber(imsi)
         log.info(f"Deleted {subscriber_name}")
 
 

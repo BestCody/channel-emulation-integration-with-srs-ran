@@ -23,8 +23,6 @@ TRIAL_FIELDS = [
     "amf_restart_count_before",
     "amf_restart_count_after",
     "amf_memory_max_bytes",
-    "throughput_status",
-    "throughput_peak_bits_per_slot",
 ]
 
 
@@ -44,8 +42,6 @@ def flatten_trial(summary):
         "amf_restart_count_before": summary.get("amf", {}).get("restart_count_before"),
         "amf_restart_count_after": summary.get("amf", {}).get("restart_count_after"),
         "amf_memory_max_bytes": summary.get("amf", {}).get("memory_max_observed"),
-        "throughput_status": summary.get("throughput", {}).get("status", "deferred"),
-        "throughput_peak_bits_per_slot": summary.get("throughput", {}).get("peak_bits_per_slot"),
     }
 
 
@@ -157,7 +153,6 @@ def summarize_run(run_root):
             "individual_trials_always_reported": True,
             "confidence_intervals": None,
             "confidence_interval_note": "Not reported; small trial counts do not support strong interval claims",
-            "throughput_status": "deferred-no-verified-user-plane-endpoint",
         })
     write_json(summary_dir / "conditions.json", conditions)
 
@@ -233,8 +228,7 @@ def summarize_run(run_root):
     atomic_write_text(
         summary_dir / "README.txt",
         "Individual trial results are shown in trials.csv.\n"
-        "Confidence intervals are intentionally not reported for small trial counts.\n"
-        "Throughput measurement is deferred.\n",
+        "Confidence intervals are intentionally not reported for small trial counts.\n",
     )
     return {
         "trial_rows": rows,

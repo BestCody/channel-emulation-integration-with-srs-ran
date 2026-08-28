@@ -34,32 +34,17 @@ spec:
             privileged: true
             capabilities:
               add: ["NET_ADMIN", "SYS_NICE", "IPC_LOCK", "CAP_NET_ADMIN"]
-          command: ["/bin/bash", "-c", "--"]
-          args:
-            - |
-              if [ "$DEBUG_MODE" = "true" ]; then
-                while true; do sleep 30; done;
-              else
-                /srsran/config/wrapper.sh
-              fi
+          command: ["/srsran/config/wrapper.sh"]
           env:
-            - name: DEBUG_MODE
-              value: "false"
             - name: PATH
               value: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/srsran/config"
             - name: SRSRAN_GNB_ZMQ_ADDR
               value: "10.10.3.231"
             - name: SRSRAN_UE_ZMQ_ADDR
               value: "10.10.3.232"
-            - name: SRSRAN_ZMQ_INTERFACE
-              value: "n3"
           volumeMounts:
             - mountPath: /srsran/config
               name: ue-volume
-          ports:
-            - name: metrics
-              containerPort: 8000
-              protocol: TCP
           resources:
             limits:
               nvidia.com/gpu: 1
@@ -70,8 +55,8 @@ spec:
           configMap:
             name: ue1-configmap
             items:
-              - key: ue0.conf
-                path: ue0.conf
+              - key: radio.json
+                path: radio.json
               - key: radio_endpoints.py
                 path: radio_endpoints.py
               - key: multi_ue_scenario.py

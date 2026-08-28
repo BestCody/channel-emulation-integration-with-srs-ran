@@ -75,7 +75,7 @@ start_component() {
 start_baseline() {
   resolve_pods
 
-  start_component     "GNU Radio"     "pgrep -f '$FLOWGRAPH_PROCESS_PATTERN' >/dev/null"     "cd /; nohup bash -c 'tail -f /dev/null | $START_GNU_SCRIPT $UE_NUMBER' >'$GNURADIO_LOG' 2>&1 &"     exec_ue
+  start_component     "GNU Radio"     "pgrep -f '$FLOWGRAPH_PROCESS_PATTERN' >/dev/null"     "nohup $START_GNU_SCRIPT $UE_NUMBER >'$GNURADIO_LOG' 2>&1 </dev/null &"     exec_ue
 
   sleep 2
 
@@ -146,7 +146,6 @@ stop_baseline() {
   exec_gnb "pkill -INT -f '$GNB_PROCESS_PATTERN' 2>/dev/null || true"
   sleep 2
   exec_ue "pkill -INT -f '$FLOWGRAPH_PROCESS_PATTERN' 2>/dev/null || true"
-  exec_ue "pkill -TERM -f '[t]ail -f /dev/null' 2>/dev/null || true"
 
   echo "Stopped UE ${UE_NUMBER}, gNB, and GNU Radio."
 }

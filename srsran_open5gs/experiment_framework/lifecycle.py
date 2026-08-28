@@ -43,9 +43,16 @@ class CommandFailure(RuntimeError):
 
 
 def command_environment(env=None):
-    result = dict(os.environ if env is None else env)
-    result.pop("DEBUG", None)
-    return result
+    return dict(os.environ if env is None else env)
+
+
+def kubernetes_image_names(nodes):
+    return {
+        name
+        for node in nodes.get("items", [])
+        for image in node.get("status", {}).get("images", []) or []
+        for name in image.get("names") or []
+    }
 
 
 class SafetyStop(RuntimeError):
@@ -473,12 +480,7 @@ class KubernetesLifecycle:
             "required_in_kubernetes", []
         )
         nodes = json.loads(self.capture("get", "nodes", "-o", "json"))
-        images = {
-            name
-            for node in nodes.get("items", [])
-            for image in node.get("status", {}).get("images", [])
-            for name in image.get("names", [])
-        }
+        images = kubernetes_image_names(nodes)
         for image in required:
             if image not in images:
                 failures.append(
@@ -551,14 +553,13 @@ class KubernetesLifecycle:
             self.capture(
                 "exec", "-n", self.namespace, self.ue_pod, "-c", self.ue_container, "--",
                 "bash", "-lc",
-                f"pkill -INT -f {self.shell_quote(self.flowgraph_pattern)} 2>/dev/null || true; "
-                "pkill -TERM -f '[t]ail -f /dev/null' 2>/dev/null || true",
+                f"pkill -INT -f {self.shell_quote(self.flowgraph_pattern)} 2>/dev/null || true",
                 check=False,
             )
 
     def wait_no_ue(self, timeout=None):
         timeout = float(timeout or self.timeouts.get("ue_wait_gone_seconds", 180))
-        # srsUE ignores SIGTERM; use forced deletion.
+        # Force deletion because srsUE ignores SIGTERM.
         force_after = float(self.timeouts.get("ue_force_delete_after_seconds", 15))
         started = time.monotonic()
         deadline = started + timeout
@@ -720,7 +721,7 @@ class KubernetesLifecycle:
             self.executor.run(self.kubectl("wait", "--for=condition=Ready", "pod", "-l", self.ue_selector, "-n", self.namespace, f"--timeout={rollout}s"), output_dir / "ready.log", timeout=rollout + 10)
         restored = self.current_state()
         write_json(output_dir / "restored-state.json", asdict(restored))
-        # Kustomize appends a hash to ConfigMap names.
+        # Ignore the Kustomize ConfigMap hash.
         def cm_base(name):
             return name.rsplit("-", 1)[0] if name else name
         restored_ok = (
@@ -769,12 +770,6 @@ class KubernetesLifecycle:
         })
         return env
 
-    def throughput_record(self):
-        return {
-            "status": "deferred",
-            "reason": "No verified user-plane throughput endpoint exists",
-        }
-
     def baseline_check(self, output_dir, *, ping_count=100, monitor_trial_dir=None):
         output_dir = pathlib.Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -798,7 +793,6 @@ class KubernetesLifecycle:
                 "attachment_success": True,
                 "ue_ip": ue_ip,
                 "ping": ping,
-                "throughput": self.throughput_record(),
             }
         finally:
             if monitor is not None:

@@ -9,7 +9,7 @@ import signal
 import socket
 import time
 
-from .config import DEFERRED_THROUGHPUT, REPO_ROOT, apply_propagation
+from .config import REPO_ROOT, apply_propagation
 from .settings import (
     _deep_merge,
     CONTROL_ENDPOINT,
@@ -242,9 +242,6 @@ class PilotRunner:
             arguments += ["--placement-min-distance", str(float(scene["min_link_distance_m"]))]
         return arguments
 
-    def throughput_record(self):
-        return dict(DEFERRED_THROUGHPUT)
-
     def _resolve_scene(self, condition, trial_dir):
         channel_dir = pathlib.Path(trial_dir) / "condition/channel"
         source = pathlib.Path(condition["scene_resolved"]["absolute_path"])
@@ -331,7 +328,6 @@ class PilotRunner:
             "pings": result.get("pings"),
             "connection_failures": 0,
             "amf": self.amf_slice(amf_start),
-            "throughput": self.throughput_record(),
         }
 
     def run_condition(self, condition, trial_number):

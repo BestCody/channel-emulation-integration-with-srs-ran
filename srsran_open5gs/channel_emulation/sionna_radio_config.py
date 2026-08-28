@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-import configparser
+import json
 import math
 import pathlib
 import re
@@ -47,27 +47,22 @@ def gnb_radio_config(path):
     return nr_arfcn, band, nr_arfcn_to_hz(nr_arfcn)
 
 
-def ue_sample_rate(path):
-    parser = configparser.ConfigParser(
-        interpolation=None,
-        strict=True,
-    )
-    with pathlib.Path(path).open(encoding="utf-8") as handle:
-        parser.read_file(handle)
+def radio_sample_rate(path):
     try:
-        sample_rate = float(parser["rf"]["srate"])
-    except (KeyError, ValueError) as error:
-        raise ValueError("UE RF sample rate was not found") from error
+        config = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+        sample_rate = float(config["sample_rate"])
+    except (OSError, KeyError, ValueError, json.JSONDecodeError) as error:
+        raise ValueError("radio sample rate was not found") from error
     if not math.isfinite(sample_rate) or sample_rate <= 0:
         raise ValueError("UE RF sample rate must be finite and positive")
     return sample_rate
 
 
-def load_radio_config(gnb_path, ue_path):
+def load_radio_config(gnb_path, radio_path):
     nr_arfcn, band, carrier_hz = gnb_radio_config(gnb_path)
     return RadioConfig(
         nr_arfcn=nr_arfcn,
         band=band,
         carrier_hz=carrier_hz,
-        sample_rate=ue_sample_rate(ue_path),
+        sample_rate=radio_sample_rate(radio_path),
     )

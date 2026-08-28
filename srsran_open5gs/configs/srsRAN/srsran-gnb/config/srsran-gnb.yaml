@@ -13,8 +13,8 @@ cell_cfg:
   dl_arfcn: 368500
   band: 3
   channel_bandwidth_MHz: 20
-  nof_antennas_dl: ${SRSRAN_GNB_ANTENNAS}
-  nof_antennas_ul: ${SRSRAN_GNB_ANTENNAS}
+  nof_antennas_dl: 1
+  nof_antennas_ul: 1
   common_scs: 15
   plmn: "00101"
   tac: 7

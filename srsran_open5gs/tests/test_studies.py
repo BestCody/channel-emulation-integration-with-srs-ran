@@ -10,6 +10,7 @@ from experiment_framework.config import load_and_resolve_study
 from experiment_framework.lifecycle import CommandExecutor
 from experiment_framework.lifecycle import CommandFailure
 from experiment_framework.lifecycle import command_environment
+from experiment_framework.lifecycle import kubernetes_image_names
 
 
 class StudyTests(unittest.TestCase):
@@ -35,17 +36,11 @@ class StudyTests(unittest.TestCase):
             ["localhost/srsue-live:gr38-v1"],
         )
 
-    def test_live_mimo_resolves(self):
-        study = self.resolve("live-mimo")
-        self.assertEqual(study["trial_count"], 1)
-        self.assertEqual(study["conditions"][0]["condition_id"], "live-mimo")
-        self.assertEqual(study["conditions"][0]["overlay"],
-                         "configs/ues/srsue-live-mimo")
-
-    def test_host_debug_setting_is_not_forwarded(self):
-        cleaned = command_environment({"DEBUG": "release", "PATH": "/bin"})
-        self.assertNotIn("DEBUG", cleaned)
-        self.assertEqual(cleaned["PATH"], "/bin")
+    def test_command_environment_is_copied(self):
+        original = {"PATH": "/bin"}
+        cleaned = command_environment(original)
+        self.assertEqual(cleaned, original)
+        self.assertIsNot(cleaned, original)
 
     def test_capture_does_not_mix_stderr_into_stdout(self):
         executor = CommandExecutor(cwd=ROOT)
@@ -64,6 +59,24 @@ class StudyTests(unittest.TestCase):
                 "-c",
                 "import sys; print('failure detail', file=sys.stderr); sys.exit(2)",
             ])
+
+    def test_image_inventory_accepts_unnamed_images(self):
+        nodes = {
+            "items": [
+                {
+                    "status": {
+                        "images": [
+                            {"names": None},
+                            {"names": ["localhost/image:tag"]},
+                        ]
+                    }
+                }
+            ]
+        }
+        self.assertEqual(
+            kubernetes_image_names(nodes),
+            {"localhost/image:tag"},
+        )
 
 
 if __name__ == "__main__":

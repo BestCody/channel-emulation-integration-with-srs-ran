@@ -17,7 +17,6 @@ from channel_protocol import parse_update
 from sionna_taps import Tap
 from sionna_taps import convert_paths
 from sionna_taps import interpolate_taps
-from trajectory import activation_sample
 from trajectory import load_trajectory
 
 
@@ -28,13 +27,11 @@ class ChannelProtocolTests(unittest.TestCase):
             sequence=17,
             client_send_ns=123,
             ue_index=1,
-            bs_index=1,
         )
         decoded = decode_message(encode_message(message))
         update = parse_update(decoded)
         self.assertEqual(update.sequence, 17)
         self.assertEqual(update.ue_index, 1)
-        self.assertEqual(update.bs_index, 1)
         self.assertEqual(update.taps[1].delay, 3)
         self.assertEqual(update.taps[1].coefficient, 0.25 - 0.5j)
 
@@ -76,18 +73,11 @@ class ChannelConversionTests(unittest.TestCase):
 
 
 class TrajectoryTests(unittest.TestCase):
-    def test_default_trajectory_timing(self):
+    def test_default_trajectory_loads(self):
         trajectory = load_trajectory(
             ROOT / "channel_emulation/trajectories/default_trajectory.json"
         )
         self.assertGreater(len(trajectory.points), 1)
-        sample = activation_sample(
-            100,
-            2,
-            trajectory.update_interval_ns,
-            1_000_000,
-        )
-        self.assertGreater(sample, 100)
 
 
 if __name__ == "__main__":

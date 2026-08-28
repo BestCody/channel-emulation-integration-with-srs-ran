@@ -35,13 +35,6 @@ spec:
             limits:
               memory: "3000Mi"
               cpu: "5000m"
-          ports:
-            - name: gnb-ue
-              containerPort: 4997
-              protocol: UDP
-            - name: metrics
-              containerPort: 8000
-              protocol: TCP
           securityContext:
             capabilities:
               add: ["NET_ADMIN"]
@@ -54,26 +47,10 @@ spec:
               value: "10.10.3.231"
             - name: SRSRAN_UE_ZMQ_ADDR
               value: "10.10.3.232"
-            - name: SRSRAN_ZMQ_INTERFACE
-              value: "n3"
           command: ["/srsran/config/wrapper.sh"]
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sh", "-c", "rm -rf /mnt/*_log.txt"]
           volumeMounts:
             - mountPath: /srsran/config
               name: gnb-volume
-            - mountPath: /var/log/
-              name: varlog
-            - name: host-mount
-              mountPath: /mnt/
-        - image: busybox
-          name: gnb-logs
-          args: [/bin/sh, -c, 'while ! tail -f /var/log/gnb.log 2>/dev/null; do sleep 1 ; done']
-          volumeMounts:
-            - mountPath: /var/log/
-              name: varlog
 
       dnsPolicy: ClusterFirst
       restartPolicy: Always
@@ -93,9 +70,3 @@ spec:
               - key: start_gnb.sh
                 path: start_gnb.sh
                 mode: 0777
-        - name: varlog
-          emptyDir: {}
-        - name: host-mount
-          hostPath:
-            path: /mnt/
-            type: Directory

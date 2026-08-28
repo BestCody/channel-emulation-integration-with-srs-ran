@@ -66,7 +66,7 @@ spec:
       initContainers:
         - name: fix-perms
           image: busybox:1.36
-          command: ["sh", "-c", "chown -R 999:999 /data/db || true"]
+          command: ["chown", "-R", "999:999", "/data/db"]
           securityContext:
             runAsUser: 0
           volumeMounts:
@@ -76,8 +76,7 @@ spec:
     - metadata:
         name: datadir
       spec:
-        # Match the static PV storage class.
-        storageClassName: longhorn
+        storageClassName: open5gs-local
         accessModes: ["ReadWriteOnce"]
         resources:
           requests:

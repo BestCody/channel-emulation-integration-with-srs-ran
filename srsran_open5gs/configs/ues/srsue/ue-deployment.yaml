@@ -81,9 +81,6 @@ spec:
               - key: wrapper.sh
                 path: wrapper.sh
                 mode: 0755
-              - key: add_route.sh
-                path: add_route.sh
-                mode: 0755
               - key: start_ue.sh
                 path: start_ue.sh
                 mode: 0755

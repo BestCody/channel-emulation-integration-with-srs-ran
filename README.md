@@ -30,6 +30,12 @@ cd sionna-srsran/srsran_open5gs
 
 All the setup commands below run from this `srsran_open5gs/` directory.
 
+Run the repository's local checks before changing the host:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
 **1. Set up the Kubernetes cluster.**
 Sets up the single-node cluster and networking.
 
@@ -91,6 +97,14 @@ kubectl apply -n open5gs -k configs/open5gs/mongodb       # subscriber database 
 kubectl apply -n open5gs -k configs/open5gs/open5gs       # 5G core network
 kubectl apply -n open5gs -k configs/srsRAN/srsran-gnb     # base station (gNB)
 kubectl apply -n open5gs -k configs/ues/srsue             # phone (UE)
+
+# Recreate existing radio/core pods after CNI installation.
+kubectl rollout restart deployment -n open5gs -l app=open5gs
+kubectl rollout restart deployment -n open5gs -l app=srsran
+kubectl rollout status deployment -n open5gs \
+  -l app=open5gs --timeout=300s
+kubectl rollout status deployment -n open5gs \
+  -l app=srsran --timeout=300s
 ```
 
 The last command deploys the baseline UE. During an evaluation, the runner
@@ -98,6 +112,9 @@ temporarily applies the live-channel UE overlay and restores the baseline UE
 afterward.
 
 Register the phone as a subscriber:
+
+The included subscriber and UE authentication values are public laboratory
+credentials. Replace them before connecting non-test equipment.
 
 ```bash
 python3 -m pip install pymongo
@@ -139,13 +156,21 @@ PY
 Use the selector on the [PyTorch installation page](https://pytorch.org/get-started/locally/)
 if the host driver does not support the CUDA 12.8 build.
 
-**5. Check that the network pods are running.**
+**5. Check that the network and secondary interfaces are ready.**
 
 ```bash
 kubectl get pods -n open5gs
+kubectl exec -n open5gs deployment/open5gs-amf -- \
+  ip -brief address show n3
+kubectl exec -n open5gs deployment/srsran-gnb -c gnb -- \
+  ip -brief address show n3
+kubectl exec -n open5gs deployment/srsran-ue1 -c ue -- \
+  ip -brief address show n3
 ```
 
-The Open5GS core, gNB, and UE pods should all be `Running`.
+All deployments must be available, and each interface command must print an
+`n3` address. The gNB and UE pods are idle control pods until the evaluator
+starts their radio processes.
 
 **6. Build the live-channel UE image.**
 

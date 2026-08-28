@@ -19,7 +19,13 @@
     "ue_selector": "app=srsran,component=ue,name=ue1"
   },
   "radio": {
+    "secondary_interface": "n3",
     "ue_number": 1
+  },
+  "runtime_images": {
+    "required_in_kubernetes": [
+      "localhost/srsue-live:gr38-v1"
+    ]
   },
   "result_root": "../results/evaluation",
   "scene": {

@@ -9,6 +9,5 @@ configMapGenerator:
       - config/multi_ue_scenario.py
       - config/generate_ue_conf.py
       - config/wrapper.sh
-      - config/add_route.sh
       - config/start_ue.sh
       - config/start_gnu.sh

@@ -421,6 +421,9 @@ class PilotRunner:
 
             self.configure_kubernetes()
             self.lifecycle.save_original(self.store.root / "provenance/original-cluster-state")
+            self.lifecycle.validate_integration(
+                self.store.root / "provenance"
+            )
             interval = min(
                 condition["measurement_profile_resolved"]["values"].get("amf_interval_seconds", 0.5)
                 for condition in self.study["conditions"]
@@ -435,9 +438,29 @@ class PilotRunner:
             )
             self.amf.start()
             try:
+                baseline = self.lifecycle.baseline_check(
+                    self.store.root / "pre-pilot-baseline",
+                    ping_count=20,
+                )
+                write_json(
+                    self.store.root / "pre-pilot-baseline/summary.json",
+                    baseline,
+                )
+                if baseline["status"] != "passed":
+                    raise CommandFailure("pre-pilot baseline failed")
                 for condition in self.study["conditions"]:
                     for trial_number in range(1, self.study["trials_per_condition"] + 1):
                         self.run_condition(condition, trial_number)
+                baseline = self.lifecycle.baseline_check(
+                    self.store.root / "post-pilot-baseline",
+                    ping_count=20,
+                )
+                write_json(
+                    self.store.root / "post-pilot-baseline/summary.json",
+                    baseline,
+                )
+                if baseline["status"] != "passed":
+                    raise CommandFailure("post-pilot baseline failed")
                 self._normal_shutdown = True
             finally:
                 self.stop_backgrounds()

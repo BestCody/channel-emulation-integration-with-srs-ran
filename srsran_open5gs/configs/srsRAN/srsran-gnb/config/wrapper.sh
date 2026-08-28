@@ -1,6 +1,7 @@
-#!/bin/bash 
-apt-get -y install pip iftop
-pip install prometheus_client
+#!/usr/bin/env bash
 
-while true; do sleep 1000; done
+set -Eeuo pipefail
 
+while true; do
+  sleep 3600
+done

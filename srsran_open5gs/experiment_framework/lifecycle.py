@@ -42,6 +42,12 @@ class CommandFailure(RuntimeError):
         self.return_code = return_code
 
 
+def command_environment(env=None):
+    result = dict(os.environ if env is None else env)
+    result.pop("DEBUG", None)
+    return result
+
+
 class SafetyStop(RuntimeError):
     pass
 
@@ -72,7 +78,7 @@ class CommandExecutor:
             process = subprocess.Popen(
                 command,
                 cwd=self.cwd,
-                env=env,
+                env=command_environment(env),
                 text=True,
                 stdout=output,
                 stderr=subprocess.STDOUT,
@@ -104,13 +110,21 @@ class CommandExecutor:
     def capture(self, command, *, timeout=30, check=True):
         self.check_safety()
         started = time.monotonic()
-        with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as output:
+        with (
+            tempfile.TemporaryFile(
+                mode="w+", encoding="utf-8"
+            ) as output,
+            tempfile.TemporaryFile(
+                mode="w+", encoding="utf-8"
+            ) as errors,
+        ):
             process = subprocess.Popen(
                 command,
                 cwd=self.cwd,
+                env=command_environment(),
                 text=True,
                 stdout=output,
-                stderr=subprocess.STDOUT,
+                stderr=errors,
                 start_new_session=True,
             )
             try:
@@ -129,10 +143,14 @@ class CommandExecutor:
                 raise
             output.seek(0)
             captured = output.read()
+            errors.seek(0)
+            captured_errors = errors.read()
         self.check_safety()
         if check and process.returncode != 0:
             raise CommandFailure(
-                captured.strip() or "command failed",
+                captured_errors.strip()
+                or captured.strip()
+                or "command failed",
                 list(command),
                 process.returncode,
             )
@@ -366,6 +384,9 @@ class KubernetesLifecycle:
         self.baseline_script = self.kubernetes.get("baseline_script", "bin/baseline.sh")
         self.num_ues = int(self.radio.get("ue_number", 1))
         self.ue_netns = self.radio.get("ue_netns", "ue1")
+        self.secondary_interface = self.radio.get(
+            "secondary_interface", "n3"
+        )
         self.gateway = GATEWAY
         self.tun_interface = TUN_INTERFACE
         self.flowgraph_pattern = FLOWGRAPH_PROCESS_PATTERN
@@ -418,6 +439,75 @@ class KubernetesLifecycle:
         self.original = self.current_state()
         write_json(output_dir / "original-state.json", asdict(self.original))
         return self.original
+
+    def validate_integration(self, output_dir):
+        output_dir = pathlib.Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        deployments = json.loads(self.capture(
+            "get", "deployments", "-n", self.namespace,
+            "-l", "app=open5gs", "-o", "json",
+        ))
+        failures = []
+        records = []
+        for deployment in deployments.get("items", []):
+            metadata = deployment.get("metadata", {})
+            spec = deployment.get("spec", {})
+            status = deployment.get("status", {})
+            desired = int(spec.get("replicas", 0))
+            available = int(status.get("availableReplicas", 0))
+            record = {
+                "name": metadata.get("name"),
+                "desired_replicas": desired,
+                "available_replicas": available,
+            }
+            records.append(record)
+            if available < desired:
+                failures.append(
+                    f"{record['name']} has {available}/{desired} "
+                    "available replicas"
+                )
+        if not records:
+            failures.append("no Open5GS deployments were found")
+
+        required = self.parameters.get("runtime_images", {}).get(
+            "required_in_kubernetes", []
+        )
+        nodes = json.loads(self.capture("get", "nodes", "-o", "json"))
+        images = {
+            name
+            for node in nodes.get("items", [])
+            for image in node.get("status", {}).get("images", [])
+            for name in image.get("names", [])
+        }
+        for image in required:
+            if image not in images:
+                failures.append(
+                    f"required Kubernetes image is missing: {image}"
+                )
+
+        self.gnb_pod = self.discover_gnb()
+        interface = self.shell_quote(self.secondary_interface)
+        address = self.gnb_capture(
+            f"ip -4 -o address show dev {interface}", check=False
+        )
+        if not address:
+            failures.append(
+                f"gNB pod has no {self.secondary_interface} interface"
+            )
+
+        report = {
+            "open5gs_deployments": records,
+            "required_kubernetes_images": list(required),
+            "gnb_pod": self.gnb_pod,
+            "gnb_secondary_interface": address,
+            "failures": failures,
+        }
+        write_json(output_dir / "integration-preflight.json", report)
+        if failures:
+            raise CommandFailure(
+                "integration preflight failed: " + "; ".join(failures)
+            )
+        return report
 
     def ue_capture(self, script, check=True):
         self.ue_pod = self.ue_pod or self.discover_ue()
@@ -518,6 +608,14 @@ class KubernetesLifecycle:
         )
         self.ue_pod = self.discover_ue()
         self.gnb_pod = self.discover_gnb()
+        interface = self.shell_quote(self.secondary_interface)
+        if not self.ue_capture(
+            f"ip -4 -o address show dev {interface}", check=False
+        ):
+            raise CommandFailure(
+                f"replacement UE pod has no "
+                f"{self.secondary_interface} interface"
+            )
         wrapper = self.ue_capture(f"pgrep -af {self.shell_quote(self.flowgraph_pattern + '|' + self.ue_process_pattern)} || true")
         atomic_write_text(output_dir / "wrapper-process-check.txt", wrapper + ("\n" if wrapper else ""))
         if wrapper:

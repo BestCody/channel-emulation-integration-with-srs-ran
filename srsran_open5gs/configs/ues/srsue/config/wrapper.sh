@@ -1,6 +1,12 @@
-mkdir /dev/net
-mknod /dev/net/tun c 10 200
+#!/usr/bin/env bash
 
-ip netns add ue0
+set -Eeuo pipefail
 
-while true; do sleep 30; done;
+mkdir -p /dev/net
+if [ ! -e /dev/net/tun ]; then
+  mknod /dev/net/tun c 10 200
+fi
+
+while true; do
+  sleep 3600
+done

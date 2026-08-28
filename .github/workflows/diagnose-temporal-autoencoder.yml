@@ -1,0 +1,111 @@
+name: Diagnose Temporal Autoencoder On Atlas
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/diagnose-temporal-autoencoder.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose-autoencoder:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 15
+    env:
+      NRX_PYTHON: /home/h3lou/miniforge3/envs/neural_rx/bin/python
+      NRX_REPO: /home/h3lou/sionna-srsran/neural_rx
+      SUITE_ROOT: /home/h3lou/sionna-srsran/temporal_reuse/research_suite
+
+    steps:
+      - name: Checkout outer repository for result persistence
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          path: outer_repo
+
+      - name: Validate Atlas inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "host=$(hostname) user=$(whoami)"
+          test "$(hostname)" = "atlas-gpu01"
+          test -x "$NRX_PYTHON"
+          git -C "$NRX_REPO" rev-parse --is-inside-work-tree >/dev/null
+          test -f "$SUITE_ROOT/suite_summary.json"
+          test -f "$SUITE_ROOT/all_results.csv"
+
+      - name: Load diagnostic script without changing local neural_rx checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C "$NRX_REPO" fetch --quiet origin experiment/temporal-ue-memory-training
+          git -C "$NRX_REPO" show FETCH_HEAD:scripts/debug_autoencoder_suite.py \
+            > "$RUNNER_TEMP/debug_autoencoder_suite.py"
+          test -s "$RUNNER_TEMP/debug_autoencoder_suite.py"
+
+      - name: Diagnose completed autoencoder runs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/temporal-autoencoder-diagnostic"
+          "$NRX_PYTHON" "$RUNNER_TEMP/debug_autoencoder_suite.py" \
+            --root "$SUITE_ROOT" \
+            --output "$RUNNER_TEMP/temporal-autoencoder-diagnostic/autoencoder_debug.json"
+          cp "$SUITE_ROOT/suite_summary.json" \
+            "$RUNNER_TEMP/temporal-autoencoder-diagnostic/suite_summary.json"
+          cp "$SUITE_ROOT/all_results.csv" \
+            "$RUNNER_TEMP/temporal-autoencoder-diagnostic/all_results.csv"
+
+          "$NRX_PYTHON" - <<'PY'
+          import json, os
+          from pathlib import Path
+          p = Path(os.environ['RUNNER_TEMP']) / 'temporal-autoencoder-diagnostic' / 'autoencoder_debug.json'
+          r = json.loads(p.read_text())
+          print('AUTOENCODER_CASES=', r.get('case_count'))
+          print('NULL_CROSSINGS=', r.get('null_crossing_count'))
+          print('FINITE_CROSSINGS=', r.get('finite_crossing_count'))
+          print('CURVE_STATUS_COUNTS=', json.dumps(r.get('curve_status_counts', {}), sort_keys=True))
+          for c in r.get('cases', []):
+              print('AE_CASE=', json.dumps({
+                  'pooling': c.get('pooling'),
+                  'd_mem': c.get('d_mem'),
+                  'curve_status': c.get('curve_status'),
+                  'snr_max_tbler': c.get('temporal_bler_at_snr_max'),
+                  'min_tbler': c.get('temporal_min_bler'),
+                  'flags': c.get('flags'),
+                  'training_history': c.get('training_history'),
+                  'training_metadata': c.get('training_metadata'),
+              }, sort_keys=True))
+          PY
+
+      - name: Persist diagnostic result in outer repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEST="$GITHUB_WORKSPACE/outer_repo/results/temporal_autoencoder_debug"
+          mkdir -p "$DEST"
+          cp "$RUNNER_TEMP/temporal-autoencoder-diagnostic/autoencoder_debug.json" "$DEST/autoencoder_debug.json"
+          cd "$GITHUB_WORKSPACE/outer_repo"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add results/temporal_autoencoder_debug/autoencoder_debug.json
+          if git diff --cached --quiet; then
+            echo "Diagnostic result unchanged"
+            exit 0
+          fi
+          git commit -m "results: persist temporal autoencoder diagnostic"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Upload diagnostic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: temporal-autoencoder-diagnostic
+          path: ${{ runner.temp }}/temporal-autoencoder-diagnostic
+          if-no-files-found: error
+          retention-days: 14

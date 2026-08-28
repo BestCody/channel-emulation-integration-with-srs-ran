@@ -1,0 +1,179 @@
+name: Temporal Autoencoder Stability Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/temporal-autoencoder-stability-smoke.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  ae-stability:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 90
+    env:
+      NRX: /home/h3lou/sionna-srsran/neural_rx
+      PY: /home/h3lou/miniforge3/envs/neural_rx/bin/python
+      BRANCH: experiment/temporal-ue-memory-training
+
+    steps:
+      - name: Checkout outer repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+          path: outer_repo
+
+      - name: Create isolated neural_rx worktree at fixed branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(hostname)" = "atlas-gpu01"
+          test -x "$PY"
+          git -C "$NRX" fetch --quiet origin "$BRANCH"
+          WT="$RUNNER_TEMP/neural_rx-ae-stability"
+          rm -rf "$WT"
+          git -C "$NRX" worktree add --detach "$WT" FETCH_HEAD
+          echo "WT=$WT" >> "$GITHUB_ENV"
+          echo "RESULTS=$RUNNER_TEMP/ae-stability-results" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/ae-stability-results"
+          echo "worktree_commit=$(git -C "$WT" rev-parse HEAD)"
+          nvidia-smi
+
+      - name: Run compression regression test
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$WT/scripts"
+          "$PY" test_temporal_compression.py 2>&1 | tee "$RESULTS/unit_test.log"
+          grep -q '"passed": true' "$RESULTS/unit_test.log"
+          grep -q '"reconstruction_detached_from_upstream_state": true' "$RESULTS/unit_test.log"
+          grep -q '"temporal_memory_connected_to_upstream_state": true' "$RESULTS/unit_test.log"
+
+      - name: Run two previously catastrophic AE smoke trainings
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$WT/scripts"
+
+          run_case() {
+            local gpu="$1"
+            local pooling="$2"
+            local dmem="$3"
+            local name="${pooling}_autoencoder_d${dmem}"
+            local out="$RESULTS/$name"
+            mkdir -p "$out"
+            "$PY" train_temporal_ue_memory_v4.py \
+              --gpu "$gpu" \
+              --pooling "$pooling" \
+              --compression autoencoder \
+              --d-mem "$dmem" \
+              --num-it 2 \
+              --train-steps 150 \
+              --memory-only-steps 50 \
+              --batch-size 4 \
+              --seq-len 4 \
+              --min-ebno-db 1.0 \
+              --max-ebno-db 5.0 \
+              --memory-lr 1e-3 \
+              --joint-lr 2e-5 \
+              --ae-reconstruction-weight 0.1 \
+              --ue-pool-size 4 \
+              --fixed-scheduling \
+              --seed 20260816 \
+              --log-every 10 \
+              --output-dir "$out" \
+              > "$out/train.log" 2>&1
+          }
+
+          run_case 0 mean 8 &
+          p0=$!
+          run_case 1 cnn 16 &
+          p1=$!
+          wait "$p0"
+          wait "$p1"
+
+      - name: Assert stability and summarize
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$PY" - <<'PY' | tee "$RESULTS/summary.json"
+          import json, math, os
+          from pathlib import Path
+
+          root = Path(os.environ['RESULTS'])
+          cases = []
+          for name in ('mean_autoencoder_d8', 'cnn_autoencoder_d16'):
+              s = json.loads((root / name / 'training_summary.json').read_text())
+              rows = s['history']
+              mem = [float(x) for r in rows for x in r.get('memory_norm_per_tb', [])]
+              aux = [float(r['compression_aux_loss']) for r in rows]
+              data = [float(r['loss_data']) for r in rows]
+              max_mem = max(mem)
+              last_ratio = 0.1 * aux[-1] / data[-1]
+              finite = all(math.isfinite(x) for x in mem + aux + data)
+              grad = s['temporal_compression_gradient_check']
+              case = {
+                  'case': name,
+                  'max_memory_norm': max_mem,
+                  'last_weighted_reconstruction_over_data': last_ratio,
+                  'finite': finite,
+                  'gradient_check_passed': bool(grad['passed']),
+                  'last_loss_data': data[-1],
+                  'last_aux_loss': aux[-1],
+              }
+              # tanh memory gives ||m||_2 <= sqrt(d_mem); allow tiny numerical margin.
+              dmem = int(s['d_mem'])
+              case['memory_bound'] = math.sqrt(dmem) + 1e-4
+              case['passed'] = (
+                  finite
+                  and max_mem <= case['memory_bound']
+                  and last_ratio < 1.0
+                  and bool(grad['passed'])
+              )
+              cases.append(case)
+
+          out = {'cases': cases, 'passed': all(c['passed'] for c in cases)}
+          print(json.dumps(out, indent=2))
+          if not out['passed']:
+              raise SystemExit('AE stability smoke failed')
+          PY
+
+      - name: Persist stability summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEST="$GITHUB_WORKSPACE/outer_repo/results/temporal_autoencoder_stability"
+          mkdir -p "$DEST"
+          cp "$RESULTS/summary.json" "$DEST/summary.json" 2>/dev/null || true
+          cp "$RESULTS/unit_test.log" "$DEST/unit_test.log" 2>/dev/null || true
+          cd "$GITHUB_WORKSPACE/outer_repo"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add results/temporal_autoencoder_stability || true
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "results: temporal autoencoder stability smoke"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Upload stability evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: temporal-autoencoder-stability-${{ github.run_id }}
+          path: ${{ env.RESULTS }}
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Remove isolated worktree
+        if: always()
+        shell: bash
+        run: |
+          git -C "$NRX" worktree remove --force "$WT" 2>/dev/null || true

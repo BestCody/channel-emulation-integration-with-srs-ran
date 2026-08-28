@@ -1,17 +1,16 @@
 kind: KubeletConfiguration
 apiVersion: kubelet.config.k8s.io/v1beta1
-    
+
 ---
 apiVersion: kubeadm.k8s.io/v1beta3
 kind: ClusterConfiguration
 networking:
-  podSubnet: "10.244.0.0/16" # --pod-network-cidr
-  
+  podSubnet: "10.244.0.0/16"
+
 apiServer:
   timeoutForControlPlane: 4m0s
   extraArgs:
     feature-gates: InPlacePodVerticalScaling=true
-apiVersion: kubeadm.k8s.io/v1beta3
 
 controllerManager:
   extraArgs:

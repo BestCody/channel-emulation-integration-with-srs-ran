@@ -6,7 +6,6 @@ from radio_endpoints import ue_uplink_endpoint
 
 
 def generate_ue_config(ue_number, output_directory):
-    # Template for the configuration
     config_template = """
 [rf]
 freq_offset = 0
@@ -60,11 +59,9 @@ ip_netmask = 255.255.255.0
 enable = false
     """
 
-    # Ensuring the output directory exists
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
 
-    # Formatting the configuration with dynamic values
     config = config_template.format(
         tx_port=ue_uplink_endpoint(ue_number),
         rx_port=ue_downlink_endpoint(ue_number),
@@ -73,7 +70,6 @@ enable = false
         netns=f"ue{ue_number}"
     )
 
-    # Write the configuration file
     config_filename = os.path.join(output_directory, f"ue_{ue_number}.conf")
     with open(config_filename, 'w') as file:
         file.write(config)

@@ -10,9 +10,9 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 LIVE_CONFIG = REPO_ROOT / "configs" / "ues" / "srsue-live" / "config"
 sys.path.insert(0, str(LIVE_CONFIG))
 
-from channel_protocol import PROTOCOL_VERSION  # noqa: E402
-from channel_protocol import decode_message  # noqa: E402
-from channel_protocol import encode_message  # noqa: E402
+from channel_protocol import PROTOCOL_VERSION
+from channel_protocol import decode_message
+from channel_protocol import encode_message
 
 
 class ChannelClient:
@@ -43,7 +43,6 @@ class ChannelClient:
         self.stream_socket.connect(self.stream_endpoint)
 
     def stream(self, message):
-        # Fire-and-forget CIR frame, no reply
         self.stream_socket.send(encode_message(message))
 
     def close(self):

@@ -1,6 +1,4 @@
 #!/bin/bash
-# Uninstall the Ubuntu 22.04 5G testbed
-
 run-as-root(){
   if [ "$EUID" -ne 0 ]
   then cecho "RED" "This script must be run as ROOT"
@@ -17,18 +15,13 @@ timer-sec(){
   done
 }
 
-# Based on https://stackoverflow.com/a/53463162/9346339
 cecho(){
     RED="\033[0;31m"
-    GREEN="\033[0;32m"  # <-- [0 means not bold
-    YELLOW="\033[1;33m" # <-- [1 means bold
+    GREEN="\033[0;32m"
+    YELLOW="\033[1;33m"
     CYAN="\033[1;36m"
-    # ... Add more colors if you like
-
-    NC="\033[0m" # No Color
-
-    # printf "${(P)1}${2} ${NC}\n" # <-- zsh
-    printf "${!1}${2} ${NC}\n" # <-- bash
+    NC="\033[0m"
+    printf "${!1}${2} ${NC}\n"
 }
 
 

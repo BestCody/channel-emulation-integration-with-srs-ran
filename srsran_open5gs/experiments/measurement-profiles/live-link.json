@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "description": "Live-channel link profile with a short final ping",
+  "attachment_timeout_seconds": 120,
+  "final_ping": {
+    "count": 5,
+    "deadline_seconds": 10
+  },
+  "amf_interval_seconds": 0.5,
+  "resource_interval_seconds": 1.0
+}

@@ -25,18 +25,4 @@ if [[ -z $pod ]]; then
   exit 1
 fi
 
-# containers=($(kubectl get pods "$pod" -n "$namespace" -o jsonpath='{.spec.containers[*].name}'))
-# if [[ ${#containers[@]} -eq 1 ]]; then
-#   container=${containers[0]}
-# else
-#   echo "Select container:"
-#   PS3="Container: "
-#   select container in "${containers[@]}"; do
-#     if [[ -n $container ]]; then
-#       break
-#     fi
-#   done
-# fi
-
 kubectl describe pod "$pod" -n "$namespace"
-

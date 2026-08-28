@@ -9,6 +9,3 @@ ip netns exec ue7 ip route add default via 10.41.0.1
 ip netns exec ue8 ip route add default via 10.41.0.1
 ip netns exec ue9 ip route add default via 10.41.0.1
 ip netns exec ue10 ip route add default via 10.41.0.1
-
-# ip route del default
-# ip route add default via 10.41.0.1

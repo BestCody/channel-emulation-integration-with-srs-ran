@@ -21,16 +21,16 @@ namespace gr {
                     const std::vector<unsigned short>& delays,
                     std::size_t samples_per_symbol = 0);
 
-                // Stream CIR and noise sigma at symbol boundaries
+                // Apply CIR updates at symbol boundaries.
                 virtual void set_channel(
                     const std::vector<gr_complex>& coefficients,
                     const std::vector<unsigned short>& delays,
                     double noise_sigma) = 0;
 
-                virtual std::uint64_t sample_count() const = 0;   // samples processed
-                virtual std::uint64_t update_count() const = 0;   // CIRs received
-                virtual std::uint64_t tap_count() const = 0;      // taps in current CIR
-                virtual double noise_sigma() const = 0;           // current noise sigma
+                virtual std::uint64_t sample_count() const = 0;
+                virtual std::uint64_t update_count() const = 0;
+                virtual std::uint64_t tap_count() const = 0;
+                virtual double noise_sigma() const = 0;
         };
     }
 }

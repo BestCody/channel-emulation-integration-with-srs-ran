@@ -18,13 +18,11 @@ class multi_ue_scenario(gr.top_block):
     def __init__(self, num_ues):
         gr.top_block.__init__(self, "srsRAN_multi_UE")
 
-        # Variables
         zmq_timeout = 100
         zmq_hwm = -1
         samp_rate = 23040000
         slow_down_ratio = 1
 
-        # Base Blocks (Always included)
         self.zeromq_req_source_0 = zeromq.req_source(
             gr.sizeof_gr_complex,
             1,
@@ -42,13 +40,11 @@ class multi_ue_scenario(gr.top_block):
             zmq_hwm,
         )
 
-        # UE-specific Blocks
         self.zeromq_req_sources = []
         self.zeromq_rep_sinks = []
         self.blocks_throttle = blocks.throttle(gr.sizeof_gr_complex*1, samp_rate / slow_down_ratio, True)
         self.blocks_add_xx = blocks.add_vcc(1)
 
-        # Create zeromq blocks dynamically for each UE
         for i in range(num_ues):
             ue_number = i + 1
             req_source = zeromq.req_source(
@@ -69,12 +65,9 @@ class multi_ue_scenario(gr.top_block):
             )
             self.zeromq_req_sources.append(req_source)
             self.zeromq_rep_sinks.append(rep_sink)
-            # Connect req source to add block
             self.connect((req_source, 0), (self.blocks_add_xx, i))
-            # Connect throttle to rep sink
             self.connect((self.blocks_throttle, 0), (rep_sink, 0))
 
-        # Connections for base blocks
         self.connect((self.blocks_add_xx, 0), (self.zeromq_rep_sink_0_1, 0))
         self.connect((self.zeromq_req_source_0, 0), (self.blocks_throttle, 0))
 

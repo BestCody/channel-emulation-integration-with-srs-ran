@@ -19,7 +19,6 @@ def list_subscriber():
         imsi = subscriber_info["imsi"]
         subscriber_name = None
 
-        # Search for the IMSI in the subscriber_data dictionary
         for name, data in subscribers.items():
             if data.get("imsi") == imsi:
                 subscriber_name = name

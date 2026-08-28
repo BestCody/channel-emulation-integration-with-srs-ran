@@ -4,10 +4,9 @@ import math
 from dataclasses import dataclass
 
 
-# Dense full-CIR fractional-delay taps
-DEFAULT_CHANNEL_LEN = 1024   # max delay in samples
-DEFAULT_SINC_HALF_WIDTH = 8  # sinc lobes per side
-KERNEL_EPS = 1e-9            # drop tiny kernel weights
+DEFAULT_CHANNEL_LEN = 1024
+DEFAULT_SINC_HALF_WIDTH = 8
+KERNEL_EPS = 1e-9
 
 
 @dataclass(frozen=True)
@@ -40,7 +39,6 @@ def _sinc(x):
 
 
 def _blackman(x, half):
-    # Blackman window tames sinc ripple
     if abs(x) > half:
         return 0.0
     return (
@@ -51,7 +49,6 @@ def _blackman(x, half):
 
 
 def _fractional_delay_kernel(frac_delay, half_width):
-    # Windowed sinc taps for fractional delay
     base = math.floor(frac_delay)
     kernel = {}
     for index in range(base - half_width + 1, base + half_width + 1):
@@ -148,7 +145,6 @@ def convert_paths(
             errors.append(f"path {index} produced an empty interpolation kernel")
             original_paths.append(record)
             continue
-        # Preserve per-path energy
         for sample_index, weight in kernel.items():
             contribution = coefficient * (weight / norm)
             if sample_index < 0 or sample_index > max_channel_len - 1:
@@ -229,7 +225,6 @@ def taps_from_report(report):
 
 
 def interpolate_taps(taps_a, taps_b, alpha):
-    # Blend CIRs per delay for per-symbol streaming
     if not 0.0 <= float(alpha) <= 1.0:
         raise ValueError("alpha must be in [0, 1]")
     alpha = float(alpha)

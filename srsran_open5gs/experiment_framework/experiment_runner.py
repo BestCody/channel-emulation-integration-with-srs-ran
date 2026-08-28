@@ -249,7 +249,6 @@ class PilotRunner:
         channel_dir = pathlib.Path(trial_dir) / "condition/channel"
         source = pathlib.Path(condition["scene_resolved"]["absolute_path"])
         scene = json.loads(source.read_text(encoding="utf-8"))
-        # --scene-set overrides (antenna, pos, solver)
         if condition.get("scene_overrides"):
             scene = _deep_merge(scene, condition["scene_overrides"])
         merged = apply_propagation(scene, condition.get("propagation"))

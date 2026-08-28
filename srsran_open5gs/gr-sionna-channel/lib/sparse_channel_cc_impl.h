@@ -36,9 +36,9 @@ namespace gr {
                     gr_vector_void_star& output_items) override;
 
             private:
-                static constexpr std::size_t kMaxTaps = 1024;   // dense CIR tap budget
-                static constexpr std::size_t kMaxDelay = 1023;  // largest tap delay, samples
-                static constexpr std::size_t kHistory = kMaxDelay;  // samples kept per block
+                static constexpr std::size_t kMaxTaps = 1024;
+                static constexpr std::size_t kMaxDelay = 1023;
+                static constexpr std::size_t kHistory = kMaxDelay;
 
                 struct tap {
                     std::uint16_t delay;
@@ -63,8 +63,8 @@ namespace gr {
                     std::size_t count) const;
                 void add_noise(gr_complex* out, std::size_t count, float sigma);
 
-                std::vector<gr_complex> d_tail;   // last kHistory inputs
-                std::vector<gr_complex> d_ext;    // scratch: tail + block
+                std::vector<gr_complex> d_tail;
+                std::vector<gr_complex> d_ext;
                 std::size_t d_samples_per_symbol;
                 std::shared_ptr<const channel_model> d_current;
                 mutable std::mutex d_channel_mutex;

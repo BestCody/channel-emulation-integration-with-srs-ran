@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "study_id": "live-mimo",
+  "description": "Single moving MIMO live-channel condition; one trial",
+  "pilot": true,
+  "conditions": [
+    "../conditions/live-mimo.json"
+  ],
+  "trials_per_condition": 1,
+  "amf_safety": {
+    "continuous": true,
+    "stop_at_growth_bytes": 134217728,
+    "stop_at_limit_fraction": 0.9,
+    "stop_on_identity_change": true,
+    "stop_on_restart": true
+  }
+}

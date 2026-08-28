@@ -41,7 +41,7 @@ class MultiUeLiveChannel(gr.top_block):
         zmq_timeout = 100
         zmq_hwm = -1
 
-        # one gNB stream pair per antenna port
+        # One gNB stream pair per antenna port.
         self.gnb_downlink_sources = []
         self.gnb_uplink_sinks = []
         self.uplink_adders = []
@@ -73,7 +73,7 @@ class MultiUeLiveChannel(gr.top_block):
             (self.throttle, 0),
         )
 
-        # antenna 0 is paced; adders pace the rest
+        # Antenna 0 paces the remaining adders.
         def downlink_feed(antenna):
             if antenna == 0:
                 return self.throttle

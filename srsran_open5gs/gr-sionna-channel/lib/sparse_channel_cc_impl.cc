@@ -121,7 +121,7 @@ double sparse_channel_cc_impl::noise_sigma() const
 void sparse_channel_cc_impl::add_noise(
     gr_complex* out, std::size_t count, float sigma)
 {
-    // Complex AWGN power is split across I and Q
+    // Split complex AWGN power across I and Q.
     const float scale = sigma * 0.70710678F;
     for (std::size_t j = 0; j < count; ++j) {
         out[j] += gr_complex(
@@ -165,7 +165,7 @@ int sparse_channel_cc_impl::work(
         return 0;
     }
 
-    // Extended buffer carries history before this block
+    // Prefix the block with input history.
     d_ext.resize(kHistory + count);
     std::copy(d_tail.begin(), d_tail.end(), d_ext.begin());
     std::copy(input, input + count, d_ext.begin() + kHistory);
@@ -173,7 +173,7 @@ int sparse_channel_cc_impl::work(
     auto absolute_sample = d_sample_count.load(std::memory_order_relaxed);
     std::size_t produced = 0;
     while (produced < count) {
-        // Latch latest streamed CIR at symbol boundaries
+        // Latch the newest CIR at symbol boundaries.
         const auto model = current_channel();
         std::size_t segment = count - produced;
         if (d_samples_per_symbol > 0) {
@@ -197,7 +197,7 @@ int sparse_channel_cc_impl::work(
         absolute_sample += segment;
     }
 
-    // Carry history into the next block
+    // Carry input history into the next block.
     std::copy(
         d_ext.end() - static_cast<std::ptrdiff_t>(kHistory),
         d_ext.end(),

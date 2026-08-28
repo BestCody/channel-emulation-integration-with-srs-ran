@@ -173,7 +173,6 @@ def summarize_run(run_root):
             result = json.loads(result_path.read_text(encoding="utf-8"))
             moving = result.get("live")
             if isinstance(moving, dict) and isinstance(moving.get("records"), list):
-                # Interpolated CIR stream rows
                 for record in moving["records"]:
                     moving_positions.append({
                         "condition_id": condition_id,

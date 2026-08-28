@@ -1,6 +1,4 @@
 #!/bin/bash
-# Show Kubernetes node request utilization
-
 set -e
 
 KUBECTL="kubectl"

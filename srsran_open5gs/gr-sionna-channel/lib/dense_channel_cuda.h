@@ -5,10 +5,10 @@
 namespace gr {
 namespace sionna_channel {
 
-// True when a usable CUDA device is present
+// Report whether CUDA is available.
 bool cuda_available();
 
-// Dense GPU FIR uses interleaved complex arrays
+// Use interleaved complex arrays.
 void cuda_dense_fir(
     const int* delays,
     const float* coeffs,

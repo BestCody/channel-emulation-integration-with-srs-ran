@@ -12,21 +12,21 @@ LIVE_CONFIG = REPO_ROOT / "configs/ues/srsue-live/config"
 sys.path.insert(0, str(LIVE_CONFIG))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
-from channel_client import ChannelClient  # noqa: E402
-from channel_protocol import Tap as ProtocolTap  # noqa: E402
-from channel_protocol import build_update  # noqa: E402
-from channel_protocol import validate_taps  # noqa: E402
-from sionna_moving import MovingSionnaScene  # noqa: E402
-from sionna_radio_config import load_radio_config  # noqa: E402
-from sionna_scene import antenna_array_dims  # noqa: E402
-from sionna_scene import antenna_port_count  # noqa: E402
-from sionna_scene import load_scene_config  # noqa: E402
-from sionna_scene import sample_ue_positions  # noqa: E402
-from sionna_scene import scene_bounding_box  # noqa: E402
-from sionna_taps import interpolate_taps  # noqa: E402
-from sionna_taps import taps_from_report  # noqa: E402
-from trajectory import load_trajectory  # noqa: E402
-from trajectory import translate_trajectory  # noqa: E402
+from channel_client import ChannelClient
+from channel_protocol import Tap as ProtocolTap
+from channel_protocol import build_update
+from channel_protocol import validate_taps
+from sionna_moving import MovingSionnaScene
+from sionna_radio_config import load_radio_config
+from sionna_scene import antenna_array_dims
+from sionna_scene import antenna_port_count
+from sionna_scene import load_scene_config
+from sionna_scene import sample_ue_positions
+from sionna_scene import scene_bounding_box
+from sionna_taps import interpolate_taps
+from sionna_taps import taps_from_report
+from trajectory import load_trajectory
+from trajectory import translate_trajectory
 
 
 def write_json(path, value):
@@ -53,7 +53,6 @@ def protocol_taps(conversion):
 
 
 def protocol_taps_per_port(point_report):
-    # one tap set per gNB antenna port
     return tuple(
         protocol_taps(conversion)
         for conversion in point_report["conversions"]
@@ -86,7 +85,6 @@ def blend_to_protocol(previous_taps, current_taps, alpha):
 
 
 def build_ue_setups(args, base_trajectory, num_ues):
-    # One (ue_index, scene config, trajectory) tuple per UE
     if num_ues == 1 and args.placement_mode != "random":
         config = load_scene_config(
             args.scene_config,

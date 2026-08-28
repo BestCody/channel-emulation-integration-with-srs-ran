@@ -42,4 +42,3 @@ data:
     iptables -t nat -A POSTROUTING -s 10.41.0.0/16 ! -o ogstun -j MASQUERADE;
 
     /open5gs/install/bin/open5gs-upfd -c /open5gs/config/upfcfg.yaml
-    # sleep 1000000

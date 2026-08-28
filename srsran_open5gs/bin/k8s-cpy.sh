@@ -39,5 +39,4 @@ else
   done
 fi
 
-# Copy SCRIPT_FILE to /tmp/SCRIPT_FILE and execute it
 kubectl cp $SCRIPT_FILE $pod:/tmp/$SCRIPT_FILE -n $namespace

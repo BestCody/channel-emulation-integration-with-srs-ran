@@ -1,46 +1,33 @@
-# srsRAN gNB ZMQ RF config
-
 amf:
-  addr: ${SRSRAN_AMF_N3_ADDR}        # AMF address
-  bind_addr: ${SRSRAN_GNB_N3_BIND_ADDR} # gNB bind address
+  addr: ${SRSRAN_AMF_N3_ADDR}
+  bind_addr: ${SRSRAN_GNB_N3_BIND_ADDR}
 
 ru_sdr:
-  device_driver: zmq                # RF driver
-  device_args: ${SRSRAN_ZMQ_GNB_DEVICE_ARGS} # ZMQ RF endpoints per antenna
-  srate: 23.04                      # RF sample rate
-  tx_gain: 75                       # RF transmit gain
-  rx_gain: 75                       # RF receive gain
+  device_driver: zmq
+  device_args: ${SRSRAN_ZMQ_GNB_DEVICE_ARGS}
+  srate: 23.04
+  tx_gain: 75
+  rx_gain: 75
 
 cell_cfg:
-  dl_arfcn: 368500                  # Downlink carrier ARFCN
-  band: 3                           # NR band
-  channel_bandwidth_MHz: 20         # Channel bandwidth in MHz
-  nof_antennas_dl: ${SRSRAN_GNB_ANTENNAS} # gNB downlink antennas
-  nof_antennas_ul: ${SRSRAN_GNB_ANTENNAS} # gNB uplink antennas
-  common_scs: 15                    # Data subcarrier spacing in kHz
-  plmn: "00101"                     # Broadcast PLMN
-  tac: 7                            # Tracking area code
+  dl_arfcn: 368500
+  band: 3
+  channel_bandwidth_MHz: 20
+  nof_antennas_dl: ${SRSRAN_GNB_ANTENNAS}
+  nof_antennas_ul: ${SRSRAN_GNB_ANTENNAS}
+  common_scs: 15
+  plmn: "00101"
+  tac: 7
   pdcch:
     common:
-      ss0_index: 0                  # srsUE search-space zero index
-      coreset0_index: 12            # srsUE CORESET zero index
+      ss0_index: 0
+      coreset0_index: 12
     dedicated:
-      ss2_type: common              # Search-space type
-      dci_format_0_1_and_1_1: false # Fallback DCI format
+      ss2_type: common
+      dci_format_0_1_and_1_1: false
   prach:
-    prach_config_index: 1           # srsUE PRACH config
-    total_nof_ra_preambles: 63      # Available PRACH preambles
-
-# log:
-#   filename: /var/log/gnb.log
-#   all_level: info
-#   hex_max_size: 0
-
-# pcap:
-#   mac_enable: false
-#   mac_filename: /tmp/gnb_mac.pcap
-#   ngap_enable: false
-#   ngap_filename: /tmp/gnb_ngap.pcap
+    prach_config_index: 1
+    total_nof_ra_preambles: 63
 
 slicing:
   - sst: 1

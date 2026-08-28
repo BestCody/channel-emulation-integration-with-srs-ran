@@ -1,6 +1,0 @@
-dependencies:
-- name: atomix
-  repository: https://charts.atomix.io
-  version: 0.1.9
-digest: sha256:579693d9cfa97a5e58bfe609eb538af8a6b8d8f3e2b1b918b3c68847f1481867
-generated: "2022-09-26T21:43:20.478338835Z"

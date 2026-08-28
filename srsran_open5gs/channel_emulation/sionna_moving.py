@@ -53,7 +53,7 @@ class MovingSionnaScene:
         self.scene = load_scene(scene_path)
         self.scene.frequency = self.carrier_hz
         antenna = config["antenna"]
-        # gNB side may expose several live antenna ports
+        # One stream per gNB antenna port.
         bs_rows, bs_cols = antenna_array_dims(antenna, "bs_array")
         self.scene.tx_array = PlanarArray(
             num_rows=bs_rows,
@@ -118,7 +118,7 @@ class MovingSionnaScene:
         coefficient_array = np.asarray(_complex_array(coefficients))
         if coefficient_array.shape[-1] == 1:
             coefficient_array = coefficient_array[..., 0]
-        # [rx, rx_ant, tx, tx_ant, paths] after the time squeeze
+        # Shape: [rx, rx_ant, tx, tx_ant, path].
         if coefficient_array.ndim != 5:
             raise RuntimeError("unexpected CIR coefficient shape")
         if coefficient_array.shape[:3] != (1, 1, 1):
@@ -132,7 +132,7 @@ class MovingSionnaScene:
         for port in range(self.num_bs_ports):
             coefficient_values = coefficient_array[0, 0, 0, port].reshape(-1)
             if delay_array.ndim == 3:
-                # synthetic arrays share delays across ports
+                # Synthetic ports share delays.
                 delay_values = delay_array[0, 0].reshape(-1)
             else:
                 delay_values = delay_array[0, 0, 0, port].reshape(-1)
@@ -165,7 +165,7 @@ class MovingSionnaScene:
             "transmitter_position": _point_json(self.transmitter.position),
             "receiver_position": _point_json(self.receiver.position),
             "num_bs_ports": self.num_bs_ports,
-            # Port 0 keeps the original single-port key.
+            # Port 0 uses the legacy single-port key.
             "conversion": conversions[0],
             "conversions": conversions,
         }

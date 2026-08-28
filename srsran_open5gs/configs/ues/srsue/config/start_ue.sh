@@ -1,4 +1,4 @@
-## Start srsUE with the given UE number
+#!/usr/bin/env bash
 
 python3 /srsran/config/generate_ue_conf.py $1 /tmp/
 ip netns add ue$1

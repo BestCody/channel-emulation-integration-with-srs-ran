@@ -1,9 +1,7 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  # Keep the existing PV name so current single-node deployments remain
-  # compatible. Despite the retained name/class below, this is not a Longhorn
-  # volume; it is a statically provisioned hostPath volume on the node.
+  # Legacy name for the static hostPath PV.
   name: mongodb-longhorn-pv
 spec:
   capacity:
@@ -11,8 +9,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
-  # Established matching label used by the existing MongoDB StatefulSet/PVC.
-  # No Longhorn StorageClass or Longhorn installation is required.
+  # This label must match the existing PVC.
   storageClassName: longhorn
   hostPath:
     path: /var/lib/mongo-pv/datadir-mongodb-0

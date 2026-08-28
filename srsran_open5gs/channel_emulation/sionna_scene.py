@@ -11,7 +11,6 @@ EXPECTED_SIONNA_VERSION = "2.0.1"
 EXPECTED_SIONNA_RT_VERSION = "2.0.1"
 EXPECTED_VARIANT = "cuda_ad_mono_polarized"
 
-# Effects default off, mirror list in config.py
 PROPAGATION_EFFECTS = (
     "los",
     "specular_reflection",
@@ -24,7 +23,7 @@ PROPAGATION_EFFECTS = (
 
 
 def _solver_options(solver):
-    """Resolve solver toggles with every effect defaulted off"""
+    """Resolve toggles; default all effects off."""
     options = dict(solver or {})
     for effect in PROPAGATION_EFFECTS:
         options.setdefault(effect, False)
@@ -50,7 +49,7 @@ def _distance(first, second):
 
 
 def antenna_array_dims(antenna, key):
-    """Read an antenna panel as (rows, cols), default 1x1"""
+    """Read panel dimensions, defaulting to 1x1."""
     raw = antenna.get(key, [1, 1])
     if not isinstance(raw, (list, tuple)) or len(raw) != 2:
         raise ValueError(f"antenna {key} must be [rows, cols]")
@@ -66,15 +65,13 @@ def antenna_array_dims(antenna, key):
 
 
 def antenna_port_count(rows, cols, polarization):
-    # cross polarization has two ports per element
     ports = 2 if polarization == "cross" else 1
     return rows * cols * ports
 
 
 def scene_bounding_box(scene_name):
-    """Return the physical scene bounding box"""
-    # importing sionna.rt selects the mitsuba variant
-    import mitsuba as mi  # noqa: F401
+    """Return the physical scene bounds."""
+    import mitsuba as mi
     from sionna.rt import load_scene
     from sionna.rt import scene as rt_scene
 
@@ -134,11 +131,7 @@ def _apply_random_placement(
 
 
 def sample_ue_positions(bounds, num_ues, *, seed=None, min_distance=0.0):
-    """Sample one shared TX and num_ues RX positions
-
-    Seeded rejection sampling; _apply_random_placement calls this
-    with num_ues==1 for the single-link case.
-    """
+    """Sample one TX and several valid UE positions."""
     num_ues = int(num_ues)
     if num_ues < 1:
         raise ValueError("num_ues must be at least one")

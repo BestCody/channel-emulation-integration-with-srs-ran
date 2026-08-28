@@ -26,7 +26,6 @@ from .settings import (
 )
 
 
-# In-pod log paths when params omit a "logs" block
 DEFAULT_LOGS = {
     "calibration_ping": "/tmp/evaluation-calibration-ping.log",
     "continuous_ping": "/tmp/evaluation-continuous-ping.log",
@@ -469,13 +468,12 @@ class KubernetesLifecycle:
 
     def wait_no_ue(self, timeout=None):
         timeout = float(timeout or self.timeouts.get("ue_wait_gone_seconds", 180))
-        # srsUE ignores SIGTERM; force-delete on timeout
+        # srsUE ignores SIGTERM; use forced deletion.
         force_after = float(self.timeouts.get("ue_force_delete_after_seconds", 15))
         started = time.monotonic()
         deadline = started + timeout
         forced = False
         while time.monotonic() < deadline:
-            # -o name is clean-empty; --no-headers is not
             value = self.capture("get", "pods", "-n", self.namespace, "-l", self.ue_selector, "-o", "name", check=False)
             if not value.strip():
                 return
@@ -624,7 +622,7 @@ class KubernetesLifecycle:
             self.executor.run(self.kubectl("wait", "--for=condition=Ready", "pod", "-l", self.ue_selector, "-n", self.namespace, f"--timeout={rollout}s"), output_dir / "ready.log", timeout=rollout + 10)
         restored = self.current_state()
         write_json(output_dir / "restored-state.json", asdict(restored))
-        # match configmap base name; kustomize adds a hash
+        # Kustomize appends a hash to ConfigMap names.
         def cm_base(name):
             return name.rsplit("-", 1)[0] if name else name
         restored_ok = (

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "condition_id": "live-mimo",
+  "label": "Moving 2-port MIMO live channel",
+  "description": "Two gNB streams mixed through a moving ray-traced channel matrix",
+  "launcher": "/srsran/config/start_gnu_live_channel.sh {ue_number}",
+  "scene": "channel_emulation/scenes/mimo_scene.json",
+  "propagation": {},
+  "trajectory": "channel_emulation/trajectories/default_trajectory.json",
+  "throughput": {
+    "status": "deferred"
+  },
+  "measurement_profile": "../measurement-profiles/live-link.json",
+  "overlay": "configs/ues/srsue-live-mimo"
+}

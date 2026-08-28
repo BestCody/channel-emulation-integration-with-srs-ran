@@ -10,7 +10,6 @@ import sys
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 DEFAULT_PARAMETER_FILE = REPO_ROOT / "experiments" / "benchmark-parameters.json"
 
-# Fixed plumbing: infrastructure, not tunable params
 CONTROL_ENDPOINT = "tcp://127.0.0.1:5555"
 STREAM_ENDPOINT = "tcp://127.0.0.1:5556"
 PORT_FORWARD = "5555:5555"

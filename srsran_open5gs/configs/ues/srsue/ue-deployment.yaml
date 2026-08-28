@@ -26,12 +26,9 @@ spec:
           ]'
     spec:
       runtimeClassName: nvidia
-      # nodeSelector:
-      #   kubernetes.io/hostname: <node_name>
       containers:
         - image: ghcr.io/sulaimanalmani/srsranzmq/srsue:v1.1
           imagePullPolicy: Always
-          # stdin: true
           name: ue
           securityContext:
             privileged: true
@@ -61,10 +58,9 @@ spec:
               name: ue-volume
           ports:
             - name: metrics
-              containerPort: 8000  # Assuming your metrics server runs on this port
+              containerPort: 8000
               protocol: TCP
           resources:
-            # GPU channel engine requires NVIDIA runtime
             limits:
               nvidia.com/gpu: 1
       dnsPolicy: ClusterFirst

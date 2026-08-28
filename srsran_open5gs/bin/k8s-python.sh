@@ -39,15 +39,11 @@ else
   done
 fi
 
-# Copy script to the pod
 kubectl cp $SCRIPT_FILE $pod:/tmp/$SCRIPT_FILE -n $namespace
 
-# Execute script in the pod
 if [[ -z $4 ]]; then
   kubectl exec -it $pod -n $namespace -- bash -c "python3 /tmp/$SCRIPT_FILE"
 else
-  # kubectl exec -it $pod -n $namespace -- bash -c "ip netns exec $4 python3 /tmp/$SCRIPT_FILE"
   kubectl exec -it $pod -n $namespace -- bash -c "python3 /tmp/$SCRIPT_FILE"
 fi
-
 

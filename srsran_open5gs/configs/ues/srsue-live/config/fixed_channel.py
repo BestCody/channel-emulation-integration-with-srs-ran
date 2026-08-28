@@ -15,7 +15,7 @@ def validate_sample_rate(sample_rate):
 
 
 def samples_per_symbol(sample_rate, scs_khz=15.0):
-    # Average OFDM symbol length
+    # Mean OFDM symbol length.
     sample_rate = validate_sample_rate(sample_rate)
     scs_khz = float(scs_khz)
     if not math.isfinite(scs_khz) or scs_khz < 15.0:

@@ -22,11 +22,8 @@ spec:
           { "name": "n3network", "interface": "n3", "ips": [ "10.10.3.231/24" ] }
           ]'
     spec:
-      # nodeSelector:
-      #   kubernetes.io/hostname: <node_name>
       containers:
         - image: ghcr.io/sulaimanalmani/srsranzmq/srsran_zmq:v1.0
-          # imagePullPolicy: Always
           name: gnb
           resizePolicy:
           - resourceName: cpu
@@ -43,12 +40,11 @@ spec:
               containerPort: 4997
               protocol: UDP
             - name: metrics
-              containerPort: 8000  # Assuming your metrics server runs on this port
+              containerPort: 8000
               protocol: TCP
           securityContext:
             capabilities:
               add: ["NET_ADMIN"]
-            # privileged: true
           env:
             - name: SRSRAN_AMF_N3_ADDR
               value: "10.10.3.200"

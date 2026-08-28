@@ -10,7 +10,6 @@ from .settings import _deep_merge, load_benchmark_parameters, parameter_sources,
 
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
-# Effects default off, mirror list in sionna_scene.py
 PROPAGATION_EFFECTS = (
     "los",
     "specular_reflection",
@@ -20,7 +19,6 @@ PROPAGATION_EFFECTS = (
     "edge_diffraction",
     "diffraction_lit_region",
 )
-# Scene-owned solver tuning
 SOLVER_TUNING_KEYS = {
     "max_depth",
     "max_num_paths_per_src",
@@ -29,7 +27,6 @@ SOLVER_TUNING_KEYS = {
     "seed",
 }
 SOLVER_KEYS = set(PROPAGATION_EFFECTS) | SOLVER_TUNING_KEYS
-# Throughput always deferred: no user-plane endpoint
 DEFERRED_THROUGHPUT = {
     "status": "deferred",
     "reason": "No verified user-plane throughput endpoint exists",
@@ -41,7 +38,7 @@ class ConfigError(ValueError):
 
 
 def apply_propagation(scene, propagation):
-    """Apply condition propagation toggles without inheritance"""
+    """Apply propagation toggles."""
     merged = copy.deepcopy(scene)
     solver = dict(merged.get("solver", {}))
     for effect in PROPAGATION_EFFECTS:
@@ -71,7 +68,7 @@ def load_json(path):
 
 
 def parse_overrides(items):
-    """Parse dotted KEY=VALUE terminal overrides into a nested dict"""
+    """Parse dotted command-line overrides."""
     result = {}
     for item in items or []:
         key, separator, raw = str(item).partition("=")
@@ -79,7 +76,6 @@ def parse_overrides(items):
         if not separator or not key:
             raise ConfigError(f"override must be KEY=VALUE: {item!r}")
         try:
-            # parse JSON scalar/list, else keep string
             value = json.loads(raw)
         except json.JSONDecodeError:
             value = raw
@@ -207,7 +203,6 @@ def resolve_condition(
     condition = validate_condition(raw, condition_path, parameters)
     resolved = copy.deepcopy(condition)
     resolved["configuration"] = source_record(condition_path)
-    # scene overrides applied to the scene file at run time
     if scene_overrides:
         resolved["scene_overrides"] = copy.deepcopy(scene_overrides)
 
@@ -289,7 +284,6 @@ def load_and_resolve_study(
 ):
     study_path = pathlib.Path(path).resolve()
     study = load_json(study_path)
-    # --set also reaches study-level keys
     if parameter_overrides:
         for key, value in parameter_overrides.items():
             if key in study:
@@ -299,7 +293,6 @@ def load_and_resolve_study(
                     else value
                 )
     files = _parameter_files(study, study_path, parameter_files)
-    # --set overrides win over study/file params
     inline = study.get("parameters") or {}
     if parameter_overrides:
         inline = _deep_merge(inline, parameter_overrides)
@@ -333,7 +326,6 @@ def load_and_resolve_study(
     resolved["conditions"] = conditions
     resolved["trial_count"] = len(conditions) * study["trials_per_condition"]
     resolved["throughput"] = dict(DEFERRED_THROUGHPUT)
-    # Record terminal overrides for provenance
     resolved["cli_overrides"] = {
         "parameters": copy.deepcopy(parameter_overrides or {}),
         "conditions": copy.deepcopy(condition_overrides or {}),

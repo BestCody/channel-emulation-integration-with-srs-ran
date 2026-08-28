@@ -1,4 +1,0 @@
-- job_name: "gameserver"
-  scrape_interval: 5s
-  static_configs:
-  - targets: ["129.97.60.165:90000"]

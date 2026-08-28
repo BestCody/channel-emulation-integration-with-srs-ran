@@ -1,7 +1,7 @@
 # Channel Emulation for srsRAN
 
-This project lets you run a 5G network and test it
-over **realistic radio channels** that are computed with ray tracing. It uses the tools:
+This project runs a software 5G network over live, ray-traced radio channels.
+It uses:
 
 - **srsRAN** — a software 5G base station (gNB) and phone (UE).
 - **Open5GS** — a software 5G core network.
@@ -11,10 +11,11 @@ over **realistic radio channels** that are computed with ray tracing. It uses th
 
 ## What you need
 
-- A machine running **Ubuntu 22.04 or 24.04**.
+- A machine running **Ubuntu 24.04**, or Ubuntu 22.04 with Python 3.11+
+  installed separately.
 - An **NVIDIA GPU** with recent drivers, CUDA, and the NVIDIA Container
-  Toolkit
-- **Python 3.11 or newer** (`sionna` and `numpy` require it)
+  Toolkit.
+- **Python 3.11 or newer**, as required by Sionna 2.0.1.
 - Local disk space for the MongoDB subscriber database. The included
   Kubernetes manifest uses a static `hostPath` volume at
   `/var/lib/mongo-pv/datadir-mongodb-0`; **Longhorn is not installed or
@@ -23,7 +24,7 @@ over **realistic radio channels** that are computed with ray tracing. It uses th
 ## Setting it up after cloning
 
 ```bash
-git clone https://github.com/BestCody/channel-emulation-integration-with-srs-ran sionna-srsran
+git clone https://github.com/BestCody/Channel-Emulation-Integration-With-SRSran.git sionna-srsran
 cd sionna-srsran/srsran_open5gs
 ```
 
@@ -31,6 +32,11 @@ All the setup commands below run from this `srsran_open5gs/` directory.
 
 **1. Set up the Kubernetes cluster.**
 Sets up the single-node cluster and networking.
+
+The installer asks for confirmation because it installs system packages,
+disables swap and UFW, restarts container runtimes, and creates host network
+bridges. Run it only on a machine dedicated to this testbed. For deliberate
+non-interactive installation, pass `--yes`.
 
 ```bash
 cd testbed-automator
@@ -42,15 +48,14 @@ cd ..
 The UE requests a GPU, but `install.sh` doesn't wire GPU into Kubernetes:
 
 ```bash
-# Needs the NVIDIA Container Toolkit (provides nvidia-ctk). If `nvidia-ctk
-# --version` fails, install it first:
-#   https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html
+# Install the NVIDIA Container Toolkit first if this fails.
+nvidia-ctk --version
 
-# a. add an "nvidia" runtime to containerd, leaving runc as the default
+# Add an NVIDIA runtime while retaining runc as the default.
 sudo nvidia-ctk runtime configure --runtime=containerd
 sudo systemctl restart containerd
 
-# b. register that runtime with Kubernetes
+# Register the runtime with Kubernetes.
 kubectl apply -f - <<'EOF'
 apiVersion: node.k8s.io/v1
 kind: RuntimeClass
@@ -59,12 +64,12 @@ metadata:
 handler: nvidia
 EOF
 
-# c. install the NVIDIA device plugin
+# Install the NVIDIA device plugin.
 kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.17.1/deployments/static/nvidia-device-plugin.yml
 kubectl -n kube-system patch daemonset nvidia-device-plugin-daemonset \
   --type=json -p '[{"op":"add","path":"/spec/template/spec/runtimeClassName","value":"nvidia"}]'
 
-# d. confirm the node now advertises GPUs (prints 1 or more)
+# Confirm that the node advertises at least one GPU.
 kubectl get node -o jsonpath='{.items[0].status.allocatable.nvidia\.com/gpu}{"\n"}'
 ```
 
@@ -73,9 +78,9 @@ Apply as Kubernetes overlays. The MongoDB overlay includes the static 1 GiB
 persistent volume used for subscriber data, so no external storage provisioner
 is needed on this single-node testbed.
 
-The MongoDB manifests retain `storageClassName: longhorn` as the **established
-matching label** so existing deployments such as `atlas-gpu01` remain compatible. The
-volume itself is a normal Kubernetes `hostPath` volume, not a Longhorn volume.
+The MongoDB manifests retain `storageClassName: longhorn` as an established
+matching label for compatibility with deployments created from earlier versions.
+The volume itself is a normal Kubernetes `hostPath` volume, not a Longhorn volume.
 Do not delete an existing MongoDB PVC/PV just to rename that label; doing so can
 remove the saved Open5GS subscriber database.
 
@@ -87,6 +92,10 @@ kubectl apply -n open5gs -k configs/open5gs/open5gs       # 5G core network
 kubectl apply -n open5gs -k configs/srsRAN/srsran-gnb     # base station (gNB)
 kubectl apply -n open5gs -k configs/ues/srsue             # phone (UE)
 ```
+
+The last command deploys the baseline UE. During an evaluation, the runner
+temporarily applies the live-channel UE overlay and restores the baseline UE
+afterward.
 
 Register the phone as a subscriber:
 
@@ -101,17 +110,34 @@ cd ../../..
 **4. Create the Python environment for the ray tracing.**
 
 ```bash
-python3 -m venv ~/sionna-env
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+"$PYTHON_BIN" -c \
+  'import sys; assert sys.version_info >= (3, 11), sys.version'
+"$PYTHON_BIN" -m venv ~/sionna-env
 source ~/sionna-env/bin/activate
-pip install "sionna==2.0.1" "sionna-rt==2.0.1" pyzmq numpy
+python -m pip install --upgrade pip
+python -m pip install "sionna==2.0.1" "sionna-rt==2.0.1" pyzmq numpy
 
-# PyTorch must match your NVIDIA driver's CUDA version — check the "CUDA
-# Version" shown top-right in `nvidia-smi`. A plain `pip install torch` may
-# grab a build too new for your driver (torch then reports CUDA unavailable).
-# For a CUDA 12.x driver, install a cu12 build explicitly:
-pip install "torch==2.11.0" --index-url https://download.pytorch.org/whl/cu128
-# Other driver versions: https://pytorch.org/get-started/locally/
+# This build requires a driver compatible with CUDA 12.8.
+python -m pip install "torch==2.11.0" \
+  --index-url https://download.pytorch.org/whl/cu128
+
+python - <<'PY'
+import mitsuba as mi
+import sionna
+import sionna.rt
+import torch
+
+assert sionna.__version__ == "2.0.1"
+assert sionna.rt.__version__ == "2.0.1"
+assert mi.variant() == "cuda_ad_mono_polarized"
+assert torch.cuda.is_available()
+print("Sionna RT and CUDA are ready")
+PY
 ```
+
+Use the selector on the [PyTorch installation page](https://pytorch.org/get-started/locally/)
+if the host driver does not support the CUDA 12.8 build.
 
 **5. Check that the network pods are running.**
 
@@ -124,21 +150,30 @@ The Open5GS core, gNB, and UE pods should all be `Running`.
 **6. Build the live-channel UE image.**
 
 ```bash
-# base image with the sparse channel block
+# Build the sparse channel block.
 sudo docker build -t localhost/srsue-sparse:gr38-v1 -f containers/srsue-channel/Dockerfile .
-# live image built on top of it
+# Build the live UE image.
 sudo docker build -t localhost/srsue-live:gr38-v1 -f containers/srsue-live/Dockerfile .
-# make the live image visible to the cluster's containerd
+# Import the live image into the Kubernetes image store.
 sudo docker save localhost/srsue-live:gr38-v1 | sudo ctr -n k8s.io images import -
+sudo ctr -n k8s.io images ls | grep localhost/srsue-live
 ```
 
 ## Running an evaluation
 
-```bash
-source ~/sionna-env/bin/activate   
+First resolve the study and print its execution plan without changing the
+cluster:
 
-#Example Run
-python3 bin/evaluation-experiment.py run experiments/studies/neural-base.json \
+```bash
+source ~/sionna-env/bin/activate
+python3 bin/evaluation-experiment.py plan \
+  experiments/studies/live-siso.json
+```
+
+Then run the live study:
+
+```bash
+python3 bin/evaluation-experiment.py run experiments/studies/live-siso.json \
   --namespace open5gs --confirm-live \
   --condition-set propagation.los=true \
   --condition-set propagation.specular_reflection=true \
@@ -147,14 +182,33 @@ python3 bin/evaluation-experiment.py run experiments/studies/neural-base.json \
   --profile-set final_ping.count=20
 ```
 
-Results are written to `results/evaluation/<study>/<run-id>/`, including per-test
-tables (CSV), plots (SVG), the logs, and a copy of the exact settings used.
+Results are written to `../results/evaluation/<study>/<run-id>/`, including
+per-test tables (CSV), plots (SVG), logs, and the exact resolved settings.
 
 A **study** is a JSON file describing what to test (for example
-`experiments/studies/neural-base.json`). You normally don't edit these by
+`experiments/studies/live-siso.json`). You normally don't edit these by
 hand, you override values from the terminal instead, as shown below.
 
+For the two-port MIMO study, deploy the matching gNB overlay before running
+`live-mimo.json`:
+
+```bash
+kubectl apply -n open5gs -k configs/srsRAN/srsran-gnb-mimo
+python3 bin/evaluation-experiment.py run experiments/studies/live-mimo.json \
+  --namespace open5gs --confirm-live \
+  --condition-set propagation.los=true \
+  --condition-set propagation.specular_reflection=true
+```
+
 ## Terminal options
+
+The evaluator provides four commands:
+
+- `resolve` validates a study and writes its expanded JSON.
+- `plan` prints the expanded study and execution plan without changing the
+  cluster.
+- `run` executes a study and requires `--confirm-live`.
+- `summarize` regenerates tables and plots for an existing run.
 
 Command-specific flags are noted in the table.
 
@@ -225,3 +279,16 @@ Example: `--scene-set scene='"munich"' --scene-set 'transmitter.position=[-1.5,0
 
 Every override you use is recorded in the results folder, so a run can always be
 reproduced.
+
+## Repository layout
+
+- `srsran_open5gs/channel_emulation` contains the Sionna RT controller.
+- `srsran_open5gs/configs` contains the Open5GS, gNB, and UE overlays.
+- `srsran_open5gs/containers` builds the live-channel UE image.
+- `srsran_open5gs/experiment_framework` runs and records studies.
+- `srsran_open5gs/experiments` contains reusable studies and conditions.
+- `srsran_open5gs/gr-sionna-channel` implements the GNU Radio channel block.
+
+## License
+
+This repository is available under the [MIT License](LICENSE).

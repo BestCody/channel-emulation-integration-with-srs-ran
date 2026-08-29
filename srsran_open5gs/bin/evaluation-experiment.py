@@ -71,11 +71,11 @@ def main():
 
     resolved = load_and_resolve_study(
         args.study,
-        parameter_files=getattr(args, "parameters", []),
-        parameter_overrides=parse_overrides(getattr(args, "param_overrides", [])),
-        condition_overrides=parse_overrides(getattr(args, "condition_overrides", [])),
-        scene_overrides=parse_overrides(getattr(args, "scene_overrides", [])),
-        profile_overrides=parse_overrides(getattr(args, "profile_overrides", [])),
+        parameter_files=args.parameters,
+        parameter_overrides=parse_overrides(args.param_overrides),
+        condition_overrides=parse_overrides(args.condition_overrides),
+        scene_overrides=parse_overrides(args.scene_overrides),
+        profile_overrides=parse_overrides(args.profile_overrides),
     )
     if args.command == "resolve":
         write_json(args.output, resolved)

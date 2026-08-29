@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "condition_id": "moving-reflections",
+  "label": "Moving link with reflections",
+  "description": "Moving direct path plus specular reflections",
+  "launcher": "/srsran/config/start_gnu_live_channel.sh {ue_number}",
+  "scene": "channel_emulation/scenes/default_scene.json",
+  "scene_overrides": {
+    "transmitter": {"position": [-2.0, 0.0, 2.5]},
+    "receiver": {"position": [0.0, 0.0, 1.5]}
+  },
+  "placement_mode": "configured",
+  "propagation": {"los": true, "specular_reflection": true},
+  "trajectory": "channel_emulation/trajectories/moving-indoor.json",
+  "measurement_profile": "../measurement-profiles/live-link.json",
+  "overlay": "configs/ues/srsue-live"
+}

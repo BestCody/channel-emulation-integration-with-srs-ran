@@ -1,11 +1,12 @@
 {
   "schema_version": 1,
-  "study_id": "live-siso",
-  "description": "Single moving SISO live-channel condition; one trial",
+  "study_id": "multi-ue-validation",
+  "description": "Live attach and traffic validation for two SISO UEs",
   "pilot": true,
-  "conditions": [
-    "../conditions/live-siso.json"
-  ],
+  "parameters": {
+    "radio": {"ue_number": 2}
+  },
+  "conditions": ["../conditions/multi-ue-siso.json"],
   "trials_per_condition": 1,
   "amf_safety": {
     "stop_at_growth_bytes": 134217728,

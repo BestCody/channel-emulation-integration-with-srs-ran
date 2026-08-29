@@ -18,7 +18,6 @@ spec:
     spec:
       serviceAccountName: mongodb
       securityContext:
-        # Keep /data/db writable.
         fsGroup: 999
         sysctls: []
       containers:
@@ -31,7 +30,6 @@ spec:
           ports:
             - name: mongodb
               containerPort: 27017
-          # Probe MongoDB without authentication.
           livenessProbe:
             exec:
               command:
@@ -62,7 +60,6 @@ spec:
           volumeMounts:
             - name: datadir
               mountPath: /data/db
-      # Set PV ownership.
       initContainers:
         - name: fix-perms
           image: busybox:1.36

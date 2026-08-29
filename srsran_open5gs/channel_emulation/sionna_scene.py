@@ -20,14 +20,17 @@ PROPAGATION_EFFECTS = (
     "edge_diffraction",
     "diffraction_lit_region",
 )
+SOLVER_FIELDS = set(PROPAGATION_EFFECTS) | {
+    "max_depth",
+    "max_num_paths_per_src",
+    "samples_per_src",
+    "synthetic_array",
+    "seed",
+}
 
 
 def _solver_options(solver):
-    """Resolve toggles; default all effects off."""
-    options = dict(solver)
-    for effect in PROPAGATION_EFFECTS:
-        options.setdefault(effect, False)
-    return options
+    return dict(solver)
 
 
 def _validate_scene_config(config):
@@ -35,7 +38,6 @@ def _validate_scene_config(config):
         "scene",
         "transmitter",
         "receiver",
-        "placement",
         "antenna",
         "solver",
         "conversion",
@@ -43,6 +45,25 @@ def _validate_scene_config(config):
     missing = required - set(config)
     if missing:
         raise ValueError(f"scene config is missing {sorted(missing)}")
+    unknown = set(config) - required
+    if unknown:
+        raise ValueError(f"scene config has unknown fields: {sorted(unknown)}")
+    for endpoint in ("transmitter", "receiver"):
+        value = config[endpoint]
+        if not isinstance(value, dict) or set(value) != {"position"}:
+            raise ValueError(f"{endpoint} must contain only position")
+        position = value["position"]
+        if (
+            not isinstance(position, list)
+            or len(position) != 3
+            or any(
+                isinstance(item, bool)
+                or not isinstance(item, (int, float))
+                or not math.isfinite(float(item))
+                for item in position
+            )
+        ):
+            raise ValueError(f"{endpoint} position must be finite 3D")
     antenna = config["antenna"]
     if not isinstance(antenna, dict):
         raise ValueError("antenna must be an object")
@@ -53,21 +74,19 @@ def _validate_scene_config(config):
         raise ValueError("SISO polarization must be V or H")
     if config["solver"].get("synthetic_array") is not True:
         raise ValueError("the live SISO channel requires synthetic_array")
-    placement = config["placement"]
-    if not isinstance(placement, dict):
-        raise ValueError("placement must be an object")
-    if placement.get("mode") not in {"configured", "random"}:
-        raise ValueError("placement mode must be configured or random")
-    if "min_distance_m" not in placement:
-        raise ValueError("placement min_distance_m is required")
-
-
+    if set(config["solver"]) != SOLVER_FIELDS:
+        raise ValueError(
+            f"solver must contain exactly {sorted(SOLVER_FIELDS)}"
+        )
+    if set(config["conversion"]) != {"late_policy"}:
+        raise ValueError("conversion must contain only late_policy")
+    if config["conversion"]["late_policy"] != "reject":
+        raise ValueError("conversion late_policy must be reject")
 def _distance(first, second):
     return math.sqrt(sum((float(a) - float(b)) ** 2 for a, b in zip(first, second)))
 
 
 def scene_bounding_box(scene_name):
-    """Return the physical scene bounds."""
     from sionna.rt import load_scene
     from sionna.rt import scene as rt_scene
 
@@ -89,45 +108,7 @@ def _random_point(lower, upper, rng):
     return [rng.uniform(lo, hi) for lo, hi in zip(lower, upper)]
 
 
-def _apply_random_placement(
-    config,
-    bounds,
-    *,
-    placement_seed=None,
-    min_distance_m=None,
-):
-    placement = config["placement"]
-    seed = placement_seed if placement_seed is not None else placement.get("seed")
-    lower, upper = bounds
-    min_distance = float(
-        min_distance_m
-        if min_distance_m is not None
-        else placement["min_distance_m"]
-    )
-    original = {
-        "transmitter": copy.deepcopy(config["transmitter"].get("position")),
-        "receiver": copy.deepcopy(config["receiver"].get("position")),
-    }
-    transmitter, receivers = sample_ue_positions(
-        bounds, 1, seed=seed, min_distance=min_distance
-    )
-    receiver = receivers[0]
-    config["transmitter"]["position"] = transmitter
-    config["receiver"]["position"] = receiver
-    config["resolved_placement"] = {
-        "mode": "random",
-        "seed": seed,
-        "scene_bounds": {"min": lower, "max": upper},
-        "original": original,
-        "transmitter": transmitter,
-        "receiver": receiver,
-        "min_distance_m": min_distance,
-    }
-    return config
-
-
-def sample_ue_positions(bounds, num_ues, *, seed=None, min_distance=0.0):
-    """Sample one TX and several valid UE positions."""
+def sample_ue_positions(bounds, num_ues, *, seed, min_distance):
     num_ues = int(num_ues)
     if num_ues < 1:
         raise ValueError("num_ues must be at least one")
@@ -151,37 +132,12 @@ def sample_ue_positions(bounds, num_ues, *, seed=None, min_distance=0.0):
     return transmitter, receivers
 
 
-def load_scene_config(
-    path,
-    *,
-    placement_mode=None,
-    placement_seed=None,
-    min_distance_m=None,
-    scene_bounds=None,
-):
+def load_scene_config(path):
     config = json.loads(
         pathlib.Path(path).read_text(encoding="utf-8")
     )
     _validate_scene_config(config)
-    config = copy.deepcopy(config)
-    placement = config["placement"]
-    mode = placement["mode"] if placement_mode is None else placement_mode
-    if mode == "configured":
-        config["resolved_placement"] = {
-            "mode": "configured",
-            "transmitter": config["transmitter"].get("position"),
-            "receiver": config["receiver"].get("position"),
-        }
-        return config
-    if mode == "random":
-        bounds = scene_bounds or scene_bounding_box(config["scene"])
-        return _apply_random_placement(
-            config,
-            bounds,
-            placement_seed=placement_seed,
-            min_distance_m=min_distance_m,
-        )
-    raise ValueError(f"unsupported placement mode: {mode}")
+    return copy.deepcopy(config)
 
 
 def _complex_array(value):

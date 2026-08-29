@@ -35,7 +35,7 @@ class ChannelControlServer:
         downlinks,
         uplinks,
         sample_rate,
-        stream_endpoint="tcp://0.0.0.0:5556",
+        stream_endpoint,
     ):
         self.bind_endpoint = bind_endpoint
         self.stream_endpoint = stream_endpoint

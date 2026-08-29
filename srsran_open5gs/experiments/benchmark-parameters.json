@@ -1,8 +1,11 @@
 {
   "channel": {
+    "baseline_ping_deadline_seconds": 2,
+    "baseline_ping_interval_seconds": 0.1,
+    "control_timeout_ms": 5000,
     "continuous_ping_interval_seconds": 0.05,
-    "continuous_ping_start_sleep_seconds": 10.0,
     "final_hold_seconds": 5.0,
+    "interpolation_steps": 8,
     "moving_live_timeout_seconds": 300,
     "port_forward_ready_seconds": 10
   },
@@ -12,15 +15,37 @@
     "baseline_script": "bin/baseline.sh",
     "gnb_container": "gnb",
     "gnb_selector": "app=srsran,component=gnb",
-    "namespace": "open5gs",
+    "iperf_container": "iperf3",
+    "iperf_port": 5201,
     "ue_config_volume": "ue-volume",
     "ue_container": "ue",
     "ue_deployment": "srsran-ue1",
-    "ue_selector": "app=srsran,component=ue,name=ue1"
+    "ue_selector": "app=srsran,component=ue,name=ue1",
+    "upf_selector": "app=open5gs,nf=upf,name=upf1"
   },
   "radio": {
+    "attachment_log_phrase": "PDU Session Establishment successful",
+    "gnb_ready_log_phrase": "Cell configured successfully.",
+    "gnuradio_ready_log_phrase": "Baseline SISO channel ready",
+    "metrics_bind": "127.0.0.1",
+    "metrics_port": 55555,
     "secondary_interface": "n3",
+    "ue_ready_log_phrase": "Attaching UE...",
     "ue_number": 1
+  },
+  "logs": {
+    "continuous_ping": "/tmp/evaluation-continuous-ping.log",
+    "gnb": "/tmp/evaluation-gnb.log",
+    "gnb_metrics": "/tmp/evaluation-gnb-metrics.jsonl",
+    "gnb_metrics_capture": "/tmp/evaluation-gnb-metrics-capture.log",
+    "gnb_scheduler": "/tmp/evaluation-gnb-scheduler.log",
+    "gnuradio": "/tmp/evaluation-gnuradio.log",
+    "ue": "/tmp/evaluation-ue.log"
+  },
+  "monitoring": {
+    "gpu_query_interval_ms": 1000,
+    "nvidia_smi": "nvidia-smi",
+    "process_interval_seconds": 1.0
   },
   "runtime_images": {
     "required_in_kubernetes": [
@@ -28,14 +53,18 @@
     ]
   },
   "result_root": "../results/evaluation",
+  "results_must_be_outside_repo": true,
   "scene": {
     "min_link_distance_m": 0.05,
-    "placement_seed": 42,
-    "randomize_positions": true
+    "placement_seed": 42
   },
   "timeouts": {
+    "baseline_attachment_seconds": 90,
     "baseline_start_seconds": 180,
+    "radio_start_gnuradio_sleep_seconds": 5.0,
+    "radio_stop_sleep_seconds": 2.0,
     "rollout_seconds": 300,
+    "ue_force_delete_after_seconds": 15,
     "ue_wait_gone_seconds": 180
   }
 }

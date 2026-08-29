@@ -8,7 +8,6 @@ namespace sionna_channel {
 
 namespace {
 
-// Use one thread per output sample.
 __global__ void dense_fir_kernel(
     const int* delays,
     const cuFloatComplex* coeffs,

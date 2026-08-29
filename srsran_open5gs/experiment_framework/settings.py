@@ -2,7 +2,6 @@
 
 import copy
 import json
-import os
 import pathlib
 import sys
 
@@ -24,6 +23,68 @@ START_GNU_SCRIPT = "/srsran/config/start_gnu.sh"
 START_UE_SCRIPT = "/srsran/config/start_ue.sh"
 TUN_INTERFACE = "tun_srsue"
 GATEWAY = "10.41.0.1"
+PARAMETER_FIELDS = {
+    "channel": {
+        "baseline_ping_deadline_seconds",
+        "baseline_ping_interval_seconds",
+        "control_timeout_ms",
+        "continuous_ping_interval_seconds",
+        "final_hold_seconds",
+        "interpolation_steps",
+        "moving_live_timeout_seconds",
+        "port_forward_ready_seconds",
+    },
+    "kubernetes": {
+        "amf_selector",
+        "baseline_overlay",
+        "baseline_script",
+        "gnb_container",
+        "gnb_selector",
+        "iperf_container",
+        "iperf_port",
+        "ue_config_volume",
+        "ue_container",
+        "ue_deployment",
+        "ue_selector",
+        "upf_selector",
+    },
+    "radio": {
+        "attachment_log_phrase",
+        "gnb_ready_log_phrase",
+        "gnuradio_ready_log_phrase",
+        "metrics_bind",
+        "metrics_port",
+        "secondary_interface",
+        "ue_ready_log_phrase",
+        "ue_number",
+    },
+    "logs": {
+        "continuous_ping",
+        "gnb",
+        "gnb_metrics",
+        "gnb_metrics_capture",
+        "gnb_scheduler",
+        "gnuradio",
+        "ue",
+    },
+    "monitoring": {
+        "gpu_query_interval_ms",
+        "nvidia_smi",
+        "process_interval_seconds",
+    },
+    "runtime_images": {"required_in_kubernetes"},
+    "scene": {"min_link_distance_m", "placement_seed"},
+    "timeouts": {
+        "baseline_attachment_seconds",
+        "baseline_start_seconds",
+        "radio_start_gnuradio_sleep_seconds",
+        "radio_stop_sleep_seconds",
+        "rollout_seconds",
+        "ue_force_delete_after_seconds",
+        "ue_wait_gone_seconds",
+    },
+}
+PARAMETER_SCALARS = {"result_root", "results_must_be_outside_repo"}
 
 
 def _deep_merge(base, overlay):
@@ -48,37 +109,25 @@ def _load_json(path):
     return value
 
 
-def _set_nested(parameters, keys, value):
-    current = parameters
-    for key in keys[:-1]:
-        current = current.setdefault(key, {})
-    current[keys[-1]] = value
-
-
-def _bool(value):
-    normalized = str(value).strip().lower()
-    if normalized in {"1", "true", "yes", "on"}:
-        return True
-    if normalized in {"0", "false", "no", "off"}:
-        return False
-    raise ValueError(f"not a boolean: {value}")
-
-
-ENVIRONMENT_OVERRIDES = {
-    "SRSRAN_UE_NUMBER": (("radio", "ue_number"), int),
-    "SIONNA_PYTHON": (("host_python",), str),
-    "BENCHMARK_RESULT_ROOT": (("result_root",), str),
-    "SIONNA_RANDOMIZE_POSITIONS": (("scene", "randomize_positions"), _bool),
-    "SIONNA_PLACEMENT_SEED": (("scene", "placement_seed"), int),
-}
+def _validate_parameters(parameters):
+    expected = set(PARAMETER_FIELDS) | PARAMETER_SCALARS
+    if set(parameters) != expected:
+        raise ValueError(
+            "benchmark parameters must contain exactly "
+            f"{sorted(expected)}"
+        )
+    for section, fields in PARAMETER_FIELDS.items():
+        value = parameters[section]
+        if not isinstance(value, dict) or set(value) != fields:
+            raise ValueError(
+                f"benchmark section {section} must contain exactly "
+                f"{sorted(fields)}"
+            )
 
 
 def load_benchmark_parameters(*parameter_files, inline=None):
-    parameters = {}
-    sources = []
-    if DEFAULT_PARAMETER_FILE.exists():
-        parameters = _deep_merge(parameters, _load_json(DEFAULT_PARAMETER_FILE))
-        sources.append(str(DEFAULT_PARAMETER_FILE))
+    parameters = _load_json(DEFAULT_PARAMETER_FILE)
+    sources = [str(DEFAULT_PARAMETER_FILE)]
     for path in parameter_files:
         if path:
             parameters = _deep_merge(parameters, _load_json(path))
@@ -87,10 +136,8 @@ def load_benchmark_parameters(*parameter_files, inline=None):
         if not isinstance(inline, dict):
             raise ValueError("inline parameters must be a JSON object")
         parameters = _deep_merge(parameters, inline)
-    for name, (keys, converter) in ENVIRONMENT_OVERRIDES.items():
-        if name in os.environ:
-            _set_nested(parameters, keys, converter(os.environ[name]))
-    parameters.setdefault("host_python", sys.executable)
+    _validate_parameters(parameters)
+    parameters["host_python"] = sys.executable
     parameters["_parameter_sources"] = sources
     return parameters
 
@@ -103,4 +150,4 @@ def resolve_repo_path(value, *, repo_root=REPO_ROOT):
 
 
 def parameter_sources(parameters):
-    return tuple(parameters.get("_parameter_sources", ()))
+    return tuple(parameters["_parameter_sources"])

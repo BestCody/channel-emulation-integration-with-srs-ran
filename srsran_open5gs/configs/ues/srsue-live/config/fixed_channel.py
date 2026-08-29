@@ -17,7 +17,10 @@ def validate_sample_rate(sample_rate):
 
 def samples_per_symbol(sample_rate):
     sample_rate = validate_sample_rate(sample_rate)
-    return max(1, int(round(sample_rate / 14000.0)))
+    result = int(round(sample_rate / 14000.0))
+    if result < 1:
+        raise ValueError("sample rate is below one sample per symbol")
+    return result
 
 
 def sample_rate_from_radio_config(path):

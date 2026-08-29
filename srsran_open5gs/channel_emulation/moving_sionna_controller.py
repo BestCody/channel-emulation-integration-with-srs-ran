@@ -1,6 +1,7 @@
 import argparse
 import copy
 import json
+import math
 import pathlib
 import sys
 import time
@@ -49,15 +50,38 @@ def protocol_taps(conversion):
     return validate_taps(taps)
 
 
-def stream_cir(client, taps, sequence, ue_index=0):
+def noise_sigma(taps, *, configured_sigma=None, snr_db=None):
+    if configured_sigma is not None:
+        return float(configured_sigma)
+    if snr_db is None:
+        return 0.0
+    channel_power = sum(abs(tap.coefficient) ** 2 for tap in taps)
+    return math.sqrt(channel_power / (10.0 ** (float(snr_db) / 10.0)))
+
+
+def stream_cir(
+    client,
+    taps,
+    sequence,
+    ue_index=0,
+    configured_sigma=None,
+    snr_db=None,
+):
+    sigma = noise_sigma(
+        taps,
+        configured_sigma=configured_sigma,
+        snr_db=snr_db,
+    )
     message = build_update(
         taps=taps,
         sequence=sequence,
         direction="both",
         client_send_ns=time.time_ns(),
         ue_index=ue_index,
+        noise_sigma=sigma,
     )
     client.stream(message)
+    return sigma
 
 
 def blend_to_protocol(previous_taps, current_taps, alpha):
@@ -69,12 +93,12 @@ def blend_to_protocol(previous_taps, current_taps, alpha):
 
 def build_ue_setups(args, base_trajectory, num_ues):
     if num_ues == 1 and args.placement_mode != "random":
-        config = load_scene_config(
-            args.scene_config,
-            placement_mode=args.placement_mode,
-            placement_seed=args.placement_seed,
-            min_distance_m=args.placement_min_distance,
-        )
+        config = load_scene_config(args.scene_config)
+        config["resolved_placement"] = {
+            "mode": "configured",
+            "transmitter": config["transmitter"]["position"],
+            "receiver": config["receiver"]["position"],
+        }
         if tuple(config["receiver"]["position"]) != base_trajectory.points[0].position:
             raise ValueError("scene receiver must match trajectory position 0")
         return [(1, config, base_trajectory)]
@@ -82,18 +106,13 @@ def build_ue_setups(args, base_trajectory, num_ues):
         raise ValueError(
             "multi-UE (--num-ues > 1) requires --placement-mode random"
         )
-    base = load_scene_config(args.scene_config, placement_mode="configured")
+    base = load_scene_config(args.scene_config)
     bounds = scene_bounding_box(base["scene"])
-    min_distance = (
-        args.placement_min_distance
-        if args.placement_min_distance is not None
-        else base["placement"]["min_distance_m"]
-    )
     transmitter, receivers = sample_ue_positions(
         bounds,
         num_ues,
         seed=args.placement_seed,
-        min_distance=min_distance,
+        min_distance=args.placement_min_distance,
     )
     start = tuple(base_trajectory.points[0].position)
     setups = []
@@ -129,7 +148,11 @@ def run_live(args, radio, ue_setups):
         )
         for ue_index, config, trajectory in ue_setups
     ]
-    client = ChannelClient(args.endpoint, stream_endpoint=args.stream_endpoint)
+    client = ChannelClient(
+        args.endpoint,
+        stream_endpoint=args.stream_endpoint,
+        timeout_ms=args.control_timeout_ms,
+    )
     records = []
     try:
         config_response = client.get_config()
@@ -137,20 +160,29 @@ def run_live(args, radio, ue_setups):
             raise ValueError("live sample rate does not match")
         if int(config_response["num_ues"]) != len(scenes):
             raise ValueError("live flowgraph UE count does not match")
-        steps = max(1, int(args.interp_steps))
+        steps = args.interp_steps
         update_interval_ns = scenes[0][2].update_interval_ns
         num_points = len(scenes[0][2].points)
         step_sleep_s = update_interval_ns / steps / 1e9
-        sequence = int(client.get_status()["last_accepted_sequence"]) + 1
+        initial_status = client.get_status()
+        sequence = int(initial_status["last_accepted_sequence"]) + 1
 
         def stream_update(ue_index, taps, index, alpha):
             nonlocal sequence
-            stream_cir(client, taps, sequence, ue_index=ue_index)
+            sigma = stream_cir(
+                client,
+                taps,
+                sequence,
+                ue_index=ue_index,
+                configured_sigma=args.noise_sigma,
+                snr_db=args.snr_db,
+            )
             records.append({
                 "ue_index": ue_index,
                 "index": index,
                 "alpha": alpha,
                 "tap_count": len(taps),
+                "noise_sigma": sigma,
             })
             sequence += 1
 
@@ -183,6 +215,21 @@ def run_live(args, radio, ue_setups):
 
         time.sleep(args.final_hold_seconds)
         final_status = client.get_status()
+        accepted_delta = (
+            int(final_status["accepted_updates"])
+            - int(initial_status["accepted_updates"])
+        )
+        if accepted_delta != len(records):
+            raise RuntimeError(
+                f"accepted {accepted_delta} of {len(records)} updates"
+            )
+        if (
+            int(final_status["rejected_updates"])
+            != int(initial_status["rejected_updates"])
+        ):
+            raise RuntimeError("the live channel rejected an update")
+        if int(final_status["last_accepted_sequence"]) != sequence - 1:
+            raise RuntimeError("the final channel sequence is incomplete")
         result = {
             "schema_version": 1,
             "mode": "live-moving-channel-stream",
@@ -190,7 +237,17 @@ def run_live(args, radio, ue_setups):
             "update_interval_ns": update_interval_ns,
             "interp_steps": steps,
             "per_symbol_channels": True,
-            "noise_enabled": False,
+            "noise": {
+                "enabled": args.noise_sigma is not None
+                or args.snr_db is not None,
+                "noise_sigma": args.noise_sigma,
+                "snr_db": args.snr_db,
+                "snr_definition": (
+                    "sum_abs_taps_squared_over_noise_power"
+                    if args.snr_db is not None
+                    else None
+                ),
+            },
             "streamed_updates": len(records),
             "epoch_created_monotonic_ns": epoch_created_ns,
             "records": records,
@@ -209,32 +266,45 @@ def run_live(args, radio, ue_setups):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--trajectory",
-        default=str(REPO_ROOT / "channel_emulation/trajectories/default_trajectory.json"),
-    )
-    parser.add_argument(
-        "--scene-config",
-        default=str(REPO_ROOT / "channel_emulation/scenes/default_scene.json"),
-    )
-    parser.add_argument(
-        "--gnb-config",
-        default=str(REPO_ROOT / "configs/srsRAN/srsran-gnb/config/srsran-gnb.yaml"),
-    )
-    parser.add_argument(
-        "--radio-config",
-        default=str(REPO_ROOT / "configs/ues/srsue/config/radio.json"),
-    )
+    parser.add_argument("--trajectory", required=True)
+    parser.add_argument("--scene-config", required=True)
+    parser.add_argument("--gnb-config", required=True)
+    parser.add_argument("--radio-config", required=True)
     parser.add_argument("--output", required=True)
-    parser.add_argument("--placement-mode", choices=["configured", "random"])
+    parser.add_argument(
+        "--placement-mode",
+        choices=["configured", "random"],
+        required=True,
+    )
     parser.add_argument("--placement-seed", type=int)
     parser.add_argument("--placement-min-distance", type=float)
-    parser.add_argument("--num-ues", type=int, default=1)
-    parser.add_argument("--endpoint", default="tcp://127.0.0.1:5555")
-    parser.add_argument("--stream-endpoint", default="tcp://127.0.0.1:5556")
-    parser.add_argument("--interp-steps", type=int, default=8)
-    parser.add_argument("--final-hold-seconds", type=float, default=5.0)
-    return parser.parse_args()
+    parser.add_argument("--num-ues", type=int, required=True)
+    parser.add_argument("--endpoint", required=True)
+    parser.add_argument("--stream-endpoint", required=True)
+    parser.add_argument("--control-timeout-ms", type=int, required=True)
+    parser.add_argument("--interp-steps", type=int, required=True)
+    parser.add_argument("--final-hold-seconds", type=float, required=True)
+    noise = parser.add_mutually_exclusive_group()
+    noise.add_argument("--noise-sigma", type=float)
+    noise.add_argument("--snr-db", type=float)
+    args = parser.parse_args()
+    if args.noise_sigma is not None:
+        if not math.isfinite(args.noise_sigma) or args.noise_sigma < 0.0:
+            parser.error("--noise-sigma must be finite and non-negative")
+    if args.snr_db is not None and not math.isfinite(args.snr_db):
+        parser.error("--snr-db must be finite")
+    if args.interp_steps < 1:
+        parser.error("--interp-steps must be at least one")
+    if args.control_timeout_ms < 1:
+        parser.error("--control-timeout-ms must be at least one")
+    if args.placement_mode == "random":
+        if args.placement_seed is None:
+            parser.error("random placement requires --placement-seed")
+        if args.placement_min_distance is None:
+            parser.error(
+                "random placement requires --placement-min-distance"
+            )
+    return args
 
 
 def main():

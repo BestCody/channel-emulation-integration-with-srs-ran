@@ -64,6 +64,9 @@ spec:
               - key: render_gnb_config.py
                 path: render_gnb_config.py
                 mode: 0755
+              - key: capture_gnb_metrics.py
+                path: capture_gnb_metrics.py
+                mode: 0755
               - key: wrapper.sh
                 path: wrapper.sh
                 mode: 0777

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "moving-indoor",
+  "update_interval_ms": 100,
+  "points": [
+    {"index": 0, "time_ms": 0, "position": [0.0, 0.0, 1.5], "velocity": [0.5, 0.0, 0.0], "speed_mps": 0.5},
+    {"index": 1, "time_ms": 100, "position": [0.05, 0.0, 1.5], "velocity": [0.5, 0.0, 0.0], "speed_mps": 0.5},
+    {"index": 2, "time_ms": 200, "position": [0.1, 0.0, 1.5], "velocity": [0.5, 0.0, 0.0], "speed_mps": 0.5},
+    {"index": 3, "time_ms": 300, "position": [0.15, 0.0, 1.5], "velocity": [0.5, 0.0, 0.0], "speed_mps": 0.5},
+    {"index": 4, "time_ms": 400, "position": [0.2, 0.0, 1.5], "velocity": [0.5, 0.0, 0.0], "speed_mps": 0.5},
+    {"index": 5, "time_ms": 500, "position": [0.25, 0.0, 1.5], "velocity": [0.5, 0.0, 0.0], "speed_mps": 0.5},
+    {"index": 6, "time_ms": 600, "position": [0.3, 0.0, 1.5], "velocity": [0.5, 0.0, 0.0], "speed_mps": 0.5},
+    {"index": 7, "time_ms": 700, "position": [0.35, 0.0, 1.5], "velocity": [0.5, 0.0, 0.0], "speed_mps": 0.5},
+    {"index": 8, "time_ms": 800, "position": [0.4, 0.0, 1.5], "velocity": [0.5, 0.0, 0.0], "speed_mps": 0.5},
+    {"index": 9, "time_ms": 900, "position": [0.45, 0.0, 1.5], "velocity": [0.5, 0.0, 0.0], "speed_mps": 0.5},
+    {"index": 10, "time_ms": 1000, "position": [0.5, 0.0, 1.5], "velocity": [0.5, 0.0, 0.0], "speed_mps": 0.5}
+  ]
+}

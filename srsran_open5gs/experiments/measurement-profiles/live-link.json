@@ -4,7 +4,15 @@
   "attachment_timeout_seconds": 120,
   "final_ping": {
     "count": 5,
-    "deadline_seconds": 10
+    "deadline_seconds": 10,
+    "interval_seconds": 0.1
+  },
+  "throughput": {
+    "enabled": true,
+    "connect_timeout_seconds": 10,
+    "completion_timeout_seconds": 25,
+    "duration_seconds": 5,
+    "omit_seconds": 1
   },
   "amf_interval_seconds": 0.5,
   "resource_interval_seconds": 1.0

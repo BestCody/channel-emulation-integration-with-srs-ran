@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "study_id": "snr-sweep",
+  "description": "Repeated stationary SISO measurements over nominal SNR",
+  "pilot": false,
+  "conditions": [
+    "../conditions/snr-35db.json",
+    "../conditions/snr-30db.json",
+    "../conditions/snr-25db.json",
+    "../conditions/snr-20db.json",
+    "../conditions/snr-15db.json"
+  ],
+  "trials_per_condition": 5,
+  "amf_safety": {
+    "stop_at_growth_bytes": 1073741824,
+    "warn_at_growth_bytes": 536870912,
+    "stop_at_limit_fraction": 0.9,
+    "warn_at_limit_fraction": 0.75
+  }
+}

@@ -13,6 +13,9 @@ The supported radio path is SISO: one gNB antenna and one antenna per UE.
 The evaluator can run multiple independent SISO UEs, but it does not provide
 MIMO channel emulation.
 
+Each trial records ping latency and loss, TCP throughput in both directions,
+gNB radio statistics, channel updates, CPU/GPU use, and reproducibility data.
+
 ## What you need
 
 - A machine running **Ubuntu 24.04**, or Ubuntu 22.04 with Python 3.11+
@@ -87,7 +90,8 @@ kubectl get node -o jsonpath='{.items[0].status.allocatable.nvidia\.com/gpu}{"\n
 **3. Deploy the 5G core and the radio.**
 Apply as Kubernetes overlays. The MongoDB overlay includes the static 1 GiB
 persistent volume used for subscriber data, so no external storage provisioner
-is needed on this single-node testbed.
+is needed on this single-node testbed. The AMF is capped at 2 GiB so repeated
+attachment studies have enough headroom while remaining bounded.
 
 ```bash
 kubectl create namespace open5gs --dry-run=client -o yaml | kubectl apply -f -
@@ -105,6 +109,9 @@ kubectl rollout status deployment -n open5gs \
 kubectl rollout status deployment -n open5gs \
   -l app=srsran --timeout=300s
 ```
+
+The first Open5GS slice includes an iperf3 server beside its UPF. This keeps
+throughput traffic on the real UE data path through the radio and core.
 
 The last command deploys the baseline UE. During an evaluation, the runner
 temporarily applies the live-channel UE overlay and restores the baseline UE
@@ -143,7 +150,7 @@ PY
 Use the selector on the [PyTorch installation page](https://pytorch.org/get-started/locally/)
 if the host driver does not support the CUDA 12.8 build.
 
-**5. Register the phone as a subscriber.**
+**5. Register the test phones as subscribers.**
 
 The included subscriber and UE authentication values are public laboratory
 credentials. Replace them before connecting non-test equipment.
@@ -154,6 +161,9 @@ python modify-subscribers.py add
 python list-subscribers.py
 cd ../../..
 ```
+
+This registers ten repeatable laboratory subscribers. A one-UE study uses the
+first identity; a two-UE study uses the first two identities.
 
 **6. Check that the network and secondary interfaces are ready.**
 
@@ -200,12 +210,79 @@ python3 bin/evaluation-experiment.py run experiments/studies/live-siso.json \
   --condition-set propagation.los=true \
   --condition-set propagation.specular_reflection=true \
   --scene-set scene='"munich"' \
-  --scene-set 'receiver.velocity=[10,0,0]' \
+  --scene-set solver.samples_per_src=100000 \
   --profile-set final_ping.count=20
 ```
 
+On a multi-GPU host, select the GPU used by Sionna RT with the standard CUDA
+environment variable, for example `CUDA_VISIBLE_DEVICES=1`.
+
 Results are written to `../results/evaluation/<study>/<run-id>/`, including
 per-test tables (CSV), plots (SVG), logs, and the exact resolved settings.
+
+## Ready-made studies
+
+| Study | Purpose | Trials |
+|---|---|---:|
+| `live-siso.json` | One moving-link smoke test | 1 |
+| `multi-ue-validation.json` | Two UEs attach and carry traffic | 1 |
+| `network-catalog.json` | Stationary, moving, near, far, and reflected links | 25 |
+| `snr-sweep.json` | Five nominal SNR values with five repeats each | 25 |
+
+Run any study with the same command shape:
+
+```bash
+python3 bin/evaluation-experiment.py plan \
+  experiments/studies/network-catalog.json
+python3 bin/evaluation-experiment.py run \
+  experiments/studies/network-catalog.json \
+  --namespace open5gs --confirm-live
+```
+
+Use the dedicated live two-UE check before designing a larger multi-user study:
+
+```bash
+python3 bin/evaluation-experiment.py run \
+  experiments/studies/multi-ue-validation.json \
+  --namespace open5gs --confirm-live
+```
+
+## Measurements
+
+Every UE receives an independent SISO channel and produces:
+
+- Continuous and final ping loss and RTT.
+- TCP uplink and downlink throughput from iperf3.
+- Per-UE IP address, attachment status, and raw traffic output.
+
+The gNB also reports:
+
+- Downlink and uplink MCS.
+- BLER derived from successful and failed HARQ/CRC outcomes.
+- HARQ NACKs, CRC failures, and retransmission grants.
+- Exact PRBs assigned by each downlink and uplink scheduler grant.
+- MAC bitrate, buffer occupancy, CQI, and measured uplink SNR.
+
+Raw gNB JSON and scheduler logs remain in each trial. The summarized fields are
+written to `summary/trials.csv`, `summary/conditions.json`, and
+`summary/ue-results.csv`.
+
+Repeated studies report a two-sided 95% Student t confidence interval for each
+mean. Packet loss uses a 95% Wilson score interval over all transmitted ping
+packets. An interval for a mean appears only when a condition has at least two
+trials.
+
+## Noise and nominal SNR
+
+A condition can select either a fixed complex-noise standard deviation or a
+nominal SNR. For a nominal SNR, each channel update uses
+
+`noise_power = sum(|channel_tap|^2) / 10^(SNR_dB/10)`.
+
+This keeps the requested SNR consistent as path power changes. It is a digital
+baseband SNR referenced to unit-power IQ samples, not a calibrated RF power at
+an antenna connector. The resolved value and every applied noise standard
+deviation are stored with the trial.
 
 A **study** is a JSON file describing what to test (for example
 `experiments/studies/live-siso.json`). You normally don't edit these by
@@ -241,7 +318,6 @@ You can change the following values from terminal when evaluating:
 |---|---|
 | `radio.ue_number` | How many phones (UEs) to simulate at once. |
 | `trials_per_condition` | How many times to repeat each test. |
-| `scene.randomize_positions` | `true` places the antennas randomly; `false` uses the fixed positions in the scene. |
 | `scene.placement_seed` | The random seed for placement, so a random run can be repeated exactly. |
 | `scene.min_link_distance_m` | Smallest allowed distance (in metres) between transmitter and receiver when placing them randomly. |
 
@@ -256,6 +332,11 @@ Example: `--set radio.ue_number=2 --set trials_per_condition=3`
 | `propagation.diffuse_reflection` | Turn on scattered reflections off rough surfaces. |
 | `propagation.refraction` | Turn on signal bending through materials. |
 | `propagation.diffraction` | Turn on bending around edges. |
+| `noise.snr_db` | Set nominal digital baseband SNR in dB. |
+| `noise.sigma` | Set a fixed complex-noise standard deviation. |
+| `placement_mode` | Use `random` or the scene's `configured` positions. |
+| `placement_seed` | Override the random-placement seed for this condition. |
+
 By default every propagation effect is off; you switch on the ones you want.
 
 Example: `--condition-set propagation.los=true --condition-set propagation.specular_reflection=true`
@@ -267,7 +348,6 @@ Example: `--condition-set propagation.los=true --condition-set propagation.specu
 | `scene` | Which built-in Sionna room to use, e.g. `"box"` or `"munich"`. |
 | `transmitter.position` | Base station location as `[x, y, z]` in metres. |
 | `receiver.position` | Phone location as `[x, y, z]` in metres. |
-| `receiver.velocity` | Phone velocity as `[vx, vy, vz]` in m/s. Adds Doppler to the channel. Default `[0,0,0]` (stationary). |
 | `antenna.pattern` | Antenna shape, e.g. `"iso"` (equal in all directions). |
 | `antenna.polarization` | Single-port antenna polarization: `"V"` or `"H"`. |
 | `solver.max_depth` | How many bounces to trace (higher = more detail, slower). |
@@ -282,9 +362,13 @@ Example: `--scene-set scene='"munich"' --scene-set 'transmitter.position=[-1.5,0
 |---|---|
 | `final_ping.count` | How many ping packets to send at the end of the test. |
 | `final_ping.deadline_seconds` | How long to wait for those pings before giving up. |
+| `final_ping.interval_seconds` | Delay between final ping packets. |
 | `attachment_timeout_seconds` | How long to wait for the phone to connect before failing. |
 | `amf_interval_seconds` | How often to record the core network's memory use. |
 | `resource_interval_seconds` | How often to record CPU and GPU use. |
+| `throughput.enabled` | Enable uplink and downlink iperf3 tests. |
+| `throughput.duration_seconds` | Measured seconds per direction and UE. |
+| `throughput.omit_seconds` | Warm-up time excluded from throughput. |
 
 Every override you use is recorded in the results folder, so a run can always be
 reproduced.

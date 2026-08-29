@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "study_id": "network-catalog",
+  "description": "Repeated stationary, mobility, distance, and reflection studies",
+  "pilot": false,
+  "conditions": [
+    "../conditions/stationary-los.json",
+    "../conditions/moving-los.json",
+    "../conditions/distance-near.json",
+    "../conditions/distance-far.json",
+    "../conditions/moving-reflections.json"
+  ],
+  "trials_per_condition": 5,
+  "amf_safety": {
+    "stop_at_growth_bytes": 1073741824,
+    "warn_at_growth_bytes": 536870912,
+    "stop_at_limit_fraction": 0.9,
+    "warn_at_limit_fraction": 0.75
+  }
+}

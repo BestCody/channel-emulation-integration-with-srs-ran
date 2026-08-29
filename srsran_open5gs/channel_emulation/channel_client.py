@@ -64,7 +64,7 @@ class ChannelClient:
             time.perf_counter_ns() - started
         ) / 1_000_000.0
         if raise_on_error and response.get("msg_type") == "error":
-            raise RuntimeError(response.get("error", "update failed"))
+            raise RuntimeError(response["error"])
         return response
 
     def get_config(self):

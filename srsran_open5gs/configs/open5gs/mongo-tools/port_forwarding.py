@@ -22,7 +22,6 @@ def wait_for_mongodb(process, timeout=15.0):
 
 
 def run_with_port_forwarding(script):
-    """Forward the MongoDB service to the host."""
     process = subprocess.Popen(
         [
             "kubectl",

@@ -8,7 +8,6 @@ set -Eeuo pipefail
 : "${UE_SELECTOR:?UE_SELECTOR is required}"
 : "${GNB_CONTAINER:?GNB_CONTAINER is required}"
 : "${UE_CONTAINER:?UE_CONTAINER is required}"
-: "${UE_NETNS:?UE_NETNS is required}"
 : "${GATEWAY:?GATEWAY is required}"
 : "${TUN_INTERFACE:?TUN_INTERFACE is required}"
 : "${START_GNU_SCRIPT:?START_GNU_SCRIPT is required}"
@@ -18,10 +17,14 @@ set -Eeuo pipefail
 : "${UE_PROCESS_PATTERN:?UE_PROCESS_PATTERN is required}"
 : "${GNB_PROCESS_PATTERN:?GNB_PROCESS_PATTERN is required}"
 : "${ATTACHMENT_LOG_PHRASE:?ATTACHMENT_LOG_PHRASE is required}"
+: "${GNB_READY_LOG_PHRASE:?GNB_READY_LOG_PHRASE is required}"
+: "${GNURADIO_READY_LOG_PHRASE:?GNURADIO_READY_LOG_PHRASE is required}"
+: "${UE_READY_LOG_PHRASE:?UE_READY_LOG_PHRASE is required}"
 
-WAIT_SECONDS="${WAIT_SECONDS:-90}"
+: "${WAIT_SECONDS:?WAIT_SECONDS is required}"
 GNURADIO_LOG="${GNURADIO_LOG:?GNURADIO_LOG is required}"
 GNB_LOG="${GNB_LOG:?GNB_LOG is required}"
+GNB_SCHEDULER_LOG="${GNB_SCHEDULER_LOG:?GNB_SCHEDULER_LOG is required}"
 UE_LOG="${UE_LOG:?UE_LOG is required}"
 
 usage() {
@@ -29,14 +32,16 @@ usage() {
 Usage: $0 {start|status|logs|stop}
 
 Required environment variables are provided by the benchmark runner. For manual
-use, set NAMESPACE, selectors, container names, UE_NETNS, GATEWAY, script paths,
+use, set NAMESPACE, selectors, container names, GATEWAY, script paths,
 log paths, and process patterns before calling this script.
 EOF
 }
 
 get_pod() {
   local selector="$1"
-  kubectl get pods -n "$NAMESPACE" -l "$selector"     --field-selector=status.phase=Running     -o jsonpath='{.items[0].metadata.name}'
+  kubectl get pods -n "$NAMESPACE" -l "$selector" \
+    --field-selector=status.phase=Running \
+    -o jsonpath='{.items[0].metadata.name}'
 }
 
 resolve_pods() {
@@ -72,57 +77,160 @@ start_component() {
   echo "Started $name."
 }
 
+ue_log_path() {
+  local ue_index="$1"
+  if [[ "$UE_NUMBER" -eq 1 ]]; then
+    printf '%s' "$UE_LOG"
+    return
+  fi
+  local root="${UE_LOG%.*}"
+  local extension="${UE_LOG#"$root"}"
+  printf '%s-ue%s%s' "$root" "$ue_index" "$extension"
+}
+
+ue_running() {
+  local ue_index="$1"
+  exec_ue "pgrep -af '$UE_PROCESS_PATTERN' | grep -F '/tmp/ue_${ue_index}.conf' >/dev/null"
+}
+
+launch_one_ue() {
+  local ue_index="$1"
+  local ue_log
+  ue_log="$(ue_log_path "$ue_index")"
+  if ue_running "$ue_index" >/dev/null 2>&1; then
+    echo "UE ${ue_index} is already running."
+  else
+    exec_ue "nohup $START_UE_SCRIPT $ue_index >'$ue_log' 2>&1 </dev/null &"
+    echo "Started UE ${ue_index}."
+  fi
+}
+
+wait_one_ue() {
+  local ue_index="$1"
+  local ue_log
+  ue_log="$(ue_log_path "$ue_index")"
+  echo "Waiting for UE ${ue_index} to establish a PDU session..."
+  for ((second = 1; second <= WAIT_SECONDS; second++)); do
+    if exec_ue "grep -Fq '$ATTACHMENT_LOG_PHRASE' '$ue_log'" >/dev/null 2>&1; then
+      exec_ue "ip netns exec 'ue${ue_index}' ip route replace default via '$GATEWAY'"
+      echo "UE ${ue_index} is attached."
+      return
+    fi
+    if ! ue_running "$ue_index" >/dev/null 2>&1; then
+      echo "UE ${ue_index} stopped before attachment." >&2
+      exec_ue "tail -n 40 '$ue_log'" || true
+      exit 1
+    fi
+    sleep 1
+  done
+  echo "UE ${ue_index} attachment timed out." >&2
+  exit 1
+}
+
+wait_one_ue_ready() {
+  local ue_index="$1"
+  local ue_log
+  ue_log="$(ue_log_path "$ue_index")"
+  echo "Waiting for UE ${ue_index} radio readiness..."
+  for ((second = 1; second <= WAIT_SECONDS; second++)); do
+    if exec_ue "grep -Fq '$UE_READY_LOG_PHRASE' '$ue_log'" \
+        >/dev/null 2>&1; then
+      return
+    fi
+    if ! ue_running "$ue_index" >/dev/null 2>&1; then
+      echo "UE ${ue_index} stopped before radio readiness." >&2
+      exec_ue "tail -n 40 '$ue_log'" || true
+      exit 1
+    fi
+    sleep 1
+  done
+  echo "UE ${ue_index} radio readiness timed out." >&2
+  exit 1
+}
+
+wait_gnuradio_ready() {
+  echo "Waiting for GNU Radio readiness..."
+  for ((second = 1; second <= WAIT_SECONDS; second++)); do
+    if exec_ue "grep -Fq '$GNURADIO_READY_LOG_PHRASE' '$GNURADIO_LOG'" \
+        >/dev/null 2>&1; then
+      return
+    fi
+    if ! exec_ue "pgrep -f '$FLOWGRAPH_PROCESS_PATTERN'" \
+        >/dev/null 2>&1; then
+      echo "GNU Radio stopped before readiness." >&2
+      exit 1
+    fi
+    sleep 1
+  done
+  echo "GNU Radio readiness timed out." >&2
+  exit 1
+}
+
+wait_gnb_ready() {
+  echo "Waiting for gNB radio readiness..."
+  for ((second = 1; second <= WAIT_SECONDS; second++)); do
+    if exec_gnb "grep -Fq '$GNB_READY_LOG_PHRASE' '$GNB_SCHEDULER_LOG'" \
+        >/dev/null 2>&1; then
+      return
+    fi
+    if ! exec_gnb "pgrep -f '$GNB_PROCESS_PATTERN'" \
+        >/dev/null 2>&1; then
+      echo "gNB stopped before radio readiness." >&2
+      exit 1
+    fi
+    sleep 1
+  done
+  echo "gNB radio readiness timed out." >&2
+  exit 1
+}
+
 start_baseline() {
   resolve_pods
 
-  start_component     "GNU Radio"     "pgrep -f '$FLOWGRAPH_PROCESS_PATTERN' >/dev/null"     "nohup $START_GNU_SCRIPT $UE_NUMBER >'$GNURADIO_LOG' 2>&1 </dev/null &"     exec_ue
+  start_component \
+    "GNU Radio" \
+    "pgrep -f '$FLOWGRAPH_PROCESS_PATTERN' >/dev/null" \
+    "nohup $START_GNU_SCRIPT $UE_NUMBER >'$GNURADIO_LOG' 2>&1 </dev/null &" \
+    exec_ue
+  wait_gnuradio_ready
 
-  sleep 2
-
-  start_component     "gNB"     "pgrep -f '$GNB_PROCESS_PATTERN' >/dev/null"     "nohup $START_GNB_SCRIPT >'$GNB_LOG' 2>&1 </dev/null &"     exec_gnb
-
-  sleep 2
-
-  start_component     "UE ${UE_NUMBER}"     "pgrep -f '$UE_PROCESS_PATTERN' >/dev/null"     "nohup $START_UE_SCRIPT $UE_NUMBER >'$UE_LOG' 2>&1 </dev/null &"     exec_ue
-
-  echo "Waiting for UE ${UE_NUMBER} to establish a PDU session..."
-  for ((second = 1; second <= WAIT_SECONDS; second++)); do
-    if exec_ue "grep -Fq '$ATTACHMENT_LOG_PHRASE' '$UE_LOG'" >/dev/null 2>&1; then
-      exec_ue "ip netns exec '$UE_NETNS' ip route replace default via '$GATEWAY'"
-      echo "Baseline ready. UE ${UE_NUMBER} is attached and its default route is set."
-      status_baseline
-      return
-    fi
-
-    if ! exec_ue "pgrep -f '$UE_PROCESS_PATTERN' >/dev/null" >/dev/null 2>&1; then
-      echo "The UE process stopped before attachment completed." >&2
-      exec_ue "tail -n 40 '$UE_LOG'" || true
-      exit 1
-    fi
-
-    sleep 1
+  for ((ue_index = 1; ue_index <= UE_NUMBER; ue_index++)); do
+    launch_one_ue "$ue_index"
   done
-
-  echo "Timed out after ${WAIT_SECONDS}s waiting for UE attachment." >&2
-  echo "Run '$0 logs' to inspect the component logs." >&2
-  exit 1
+  for ((ue_index = 1; ue_index <= UE_NUMBER; ue_index++)); do
+    wait_one_ue_ready "$ue_index"
+  done
+  start_component \
+    "gNB" \
+    "pgrep -f '$GNB_PROCESS_PATTERN' >/dev/null" \
+    "nohup $START_GNB_SCRIPT >'$GNB_LOG' 2>&1 </dev/null &" \
+    exec_gnb
+  wait_gnb_ready
+  for ((ue_index = 1; ue_index <= UE_NUMBER; ue_index++)); do
+    wait_one_ue "$ue_index"
+  done
+  echo "Baseline ready. All ${UE_NUMBER} UE(s) are attached."
+  status_baseline
 }
 
 status_baseline() {
   resolve_pods
 
-  printf "%-12s %s
-" "Component" "Status"
-  printf "%-12s %s
-" "GNU Radio"     "$(exec_ue "pgrep -f '$FLOWGRAPH_PROCESS_PATTERN' >/dev/null && echo running || echo stopped")"
-  printf "%-12s %s
-" "gNB"     "$(exec_gnb "pgrep -f '$GNB_PROCESS_PATTERN' >/dev/null && echo running || echo stopped")"
-  printf "%-12s %s
-" "UE ${UE_NUMBER}"     "$(exec_ue "pgrep -f '$UE_PROCESS_PATTERN' >/dev/null && echo running || echo stopped")"
+  printf "%-12s %s\n" "Component" "Status"
+  printf "%-12s %s\n" "GNU Radio" \
+    "$(exec_ue "pgrep -f '$FLOWGRAPH_PROCESS_PATTERN' >/dev/null && echo running || echo stopped")"
+  printf "%-12s %s\n" "gNB" \
+    "$(exec_gnb "pgrep -f '$GNB_PROCESS_PATTERN' >/dev/null && echo running || echo stopped")"
+  for ((ue_index = 1; ue_index <= UE_NUMBER; ue_index++)); do
+    printf "%-12s %s\n" "UE ${ue_index}" \
+      "$(ue_running "$ue_index" >/dev/null 2>&1 && echo running || echo stopped)"
+  done
 
-  echo
-  exec_ue "ip netns exec '$UE_NETNS' ip -br addr show '$TUN_INTERFACE' 2>/dev/null || true"
-  exec_ue "ip netns exec '$UE_NETNS' ip route 2>/dev/null || true"
+  for ((ue_index = 1; ue_index <= UE_NUMBER; ue_index++)); do
+    echo
+    exec_ue "ip netns exec 'ue${ue_index}' ip -br addr show '$TUN_INTERFACE' 2>/dev/null || true"
+    exec_ue "ip netns exec 'ue${ue_index}' ip route 2>/dev/null || true"
+  done
 }
 
 show_logs() {
@@ -134,8 +242,11 @@ show_logs() {
   echo "===== gNB ====="
   exec_gnb "tail -n 40 '$GNB_LOG' 2>/dev/null || echo 'No gNB log yet.'"
   echo
-  echo "===== UE ${UE_NUMBER} ====="
-  exec_ue "tail -n 40 '$UE_LOG' 2>/dev/null || echo 'No UE log yet.'"
+  for ((ue_index = 1; ue_index <= UE_NUMBER; ue_index++)); do
+    echo "===== UE ${ue_index} ====="
+    ue_log="$(ue_log_path "$ue_index")"
+    exec_ue "tail -n 40 '$ue_log' 2>/dev/null || echo 'No UE log yet.'"
+  done
 }
 
 stop_baseline() {
@@ -147,7 +258,7 @@ stop_baseline() {
   sleep 2
   exec_ue "pkill -INT -f '$FLOWGRAPH_PROCESS_PATTERN' 2>/dev/null || true"
 
-  echo "Stopped UE ${UE_NUMBER}, gNB, and GNU Radio."
+  echo "Stopped ${UE_NUMBER} UE(s), gNB, and GNU Radio."
 }
 
 case "${1:-}" in

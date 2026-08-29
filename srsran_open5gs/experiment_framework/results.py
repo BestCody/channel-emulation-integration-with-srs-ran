@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import csv
 import hashlib
 import json
 import os
@@ -84,22 +83,6 @@ class ResultStore:
 
     def write_json(self, relative_path, value):
         write_json(self.root / relative_path, value)
-
-    def write_csv(self, relative_path, fieldnames, rows):
-        path = self.root / relative_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-        try:
-            with os.fdopen(descriptor, "w", encoding="utf-8", newline="") as output:
-                writer = csv.DictWriter(output, fieldnames=fieldnames)
-                writer.writeheader()
-                writer.writerows(rows)
-                output.flush()
-                os.fsync(output.fileno())
-            os.replace(temporary, path)
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
 
     def write_checksums(self):
         rows = []

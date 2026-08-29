@@ -9,9 +9,6 @@ import threading
 import time
 
 
-MIB = 1024 * 1024
-
-
 def kubectl(*arguments):
     return subprocess.check_output(
         ["kubectl", *arguments],
@@ -56,7 +53,7 @@ def read_sample(namespace, selector):
         "time_ns": time.time_ns(),
         "pod": pod,
         "pod_uid": metadata["metadata"]["uid"],
-        "container_id": status.get("containerID"),
+        "container_id": status["containerID"],
         "restart_count": int(status["restartCount"]),
         "memory_current": int(memory[0]),
         "memory_max": maximum,
@@ -97,11 +94,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--namespace", required=True)
     parser.add_argument("--selector", required=True)
-    parser.add_argument("--interval", type=float, default=1.0)
-    parser.add_argument("--stop-growth-bytes", type=int, default=128 * MIB)
-    parser.add_argument("--warn-growth-bytes", type=int, default=64 * MIB)
-    parser.add_argument("--stop-limit-fraction", type=float, default=0.90)
-    parser.add_argument("--warn-limit-fraction", type=float, default=0.75)
+    parser.add_argument("--interval", type=float, required=True)
+    parser.add_argument("--stop-growth-bytes", type=int, required=True)
+    parser.add_argument("--warn-growth-bytes", type=int, required=True)
+    parser.add_argument("--stop-limit-fraction", type=float, required=True)
+    parser.add_argument("--warn-limit-fraction", type=float, required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--summary", required=True)
     args = parser.parse_args()

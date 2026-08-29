@@ -1,17 +1,10 @@
 {
   "scene": "box",
   "transmitter": {
-    "name": "gnb",
     "position": [-2.0, 0.0, 2.5]
   },
   "receiver": {
-    "name": "ue",
-    "position": [2.0, 0.0, 1.5],
-    "velocity": [0.0, 0.0, 0.0]
-  },
-  "placement": {
-    "mode": "configured",
-    "min_distance_m": 0.05
+    "position": [2.0, 0.0, 1.5]
   },
   "antenna": {
     "pattern": "iso",

@@ -21,7 +21,6 @@ namespace gr {
                     const std::vector<unsigned short>& delays,
                     std::size_t samples_per_symbol = 0);
 
-                // Apply CIR updates at symbol boundaries.
                 virtual void set_channel(
                     const std::vector<gr_complex>& coefficients,
                     const std::vector<unsigned short>& delays,

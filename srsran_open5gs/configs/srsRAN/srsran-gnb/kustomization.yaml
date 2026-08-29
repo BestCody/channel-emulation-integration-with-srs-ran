@@ -9,5 +9,6 @@ configMapGenerator:
     files:
       - config/srsran-gnb.yaml
       - config/render_gnb_config.py
+      - config/capture_gnb_metrics.py
       - config/wrapper.sh
       - config/start_gnb.sh

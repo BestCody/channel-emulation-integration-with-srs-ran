@@ -7,6 +7,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from experiment_framework.config import load_and_resolve_study
+from experiment_framework.config import ConfigError
 from experiment_framework.lifecycle import CommandExecutor
 from experiment_framework.lifecycle import CommandFailure
 from experiment_framework.lifecycle import command_environment
@@ -35,6 +36,47 @@ class StudyTests(unittest.TestCase):
             ["required_in_kubernetes"],
             ["localhost/srsue-live:gr38-v1"],
         )
+
+    def test_network_catalog_resolves_repetitions(self):
+        study = self.resolve("network-catalog")
+        self.assertEqual(study["trial_count"], 25)
+        self.assertEqual(len(study["conditions"]), 5)
+
+    def test_snr_sweep_resolves_noise_levels(self):
+        study = self.resolve("snr-sweep")
+        self.assertEqual(study["trial_count"], 25)
+        self.assertEqual(
+            [item["noise"]["snr_db"] for item in study["conditions"]],
+            [35.0, 30.0, 25.0, 20.0, 15.0],
+        )
+
+    def test_multi_ue_study_resolves_two_ues(self):
+        study = self.resolve("multi-ue-validation")
+        self.assertEqual(study["trial_count"], 1)
+        self.assertEqual(study["parameters"]["radio"]["ue_number"], 2)
+
+    def test_noise_controls_are_mutually_exclusive(self):
+        with self.assertRaises(ConfigError):
+            load_and_resolve_study(
+                ROOT / "experiments/studies/live-siso.json",
+                condition_overrides={
+                    "noise": {"sigma": 0.1, "snr_db": 20.0}
+                },
+            )
+
+    def test_unknown_condition_field_is_rejected(self):
+        with self.assertRaises(ConfigError):
+            load_and_resolve_study(
+                ROOT / "experiments/studies/live-siso.json",
+                condition_overrides={"legacy_mode": True},
+            )
+
+    def test_unknown_benchmark_field_is_rejected(self):
+        with self.assertRaises(ConfigError):
+            load_and_resolve_study(
+                ROOT / "experiments/studies/live-siso.json",
+                parameter_overrides={"fallback_mode": True},
+            )
 
     def test_command_environment_is_copied(self):
         original = {"PATH": "/bin"}

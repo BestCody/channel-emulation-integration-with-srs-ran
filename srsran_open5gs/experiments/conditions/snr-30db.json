@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "condition_id": "snr-30db",
+  "label": "Nominal SNR 30 dB",
+  "description": "Stationary line-of-sight link at 30 dB",
+  "launcher": "/srsran/config/start_gnu_live_channel.sh {ue_number}",
+  "scene": "channel_emulation/scenes/default_scene.json",
+  "scene_overrides": {
+    "transmitter": {"position": [-2.0, 0.0, 2.5]},
+    "receiver": {"position": [2.0, 0.0, 1.5]}
+  },
+  "placement_mode": "configured",
+  "propagation": {"los": true},
+  "noise": {"snr_db": 30.0},
+  "trajectory": "channel_emulation/trajectories/stationary-center.json",
+  "measurement_profile": "../measurement-profiles/live-link.json",
+  "overlay": "configs/ues/srsue-live"
+}

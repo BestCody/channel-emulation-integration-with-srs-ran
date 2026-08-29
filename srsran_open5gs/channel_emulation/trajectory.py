@@ -90,7 +90,6 @@ def load_trajectory(path):
 
 
 def translate_trajectory(trajectory, offset):
-    """Shift all positions by a fixed offset"""
     offset = _vector(list(offset), "offset")
     points = tuple(
         TrajectoryPoint(

@@ -7,14 +7,12 @@ from dataclasses import dataclass
 
 
 PROTOCOL_VERSION = 3
-# Dense CIR limits match the ring buffer.
 MAX_CHANNEL_LEN = 1024
 MAX_TAPS = MAX_CHANNEL_LEN
 MAX_DELAY = MAX_CHANNEL_LEN - 1
 MAX_MESSAGE_BYTES = 1024 * 1024
 NOISE_SIGMA_MAX = 512.0
 VALID_DIRECTIONS = {"both", "downlink", "uplink"}
-# UE index 0 targets all UEs.
 MAX_UES = 64
 _FRAME_MAGIC = b"SCIR"
 _FRAME_HEADER = struct.Struct("<4sBBBBQQdI")

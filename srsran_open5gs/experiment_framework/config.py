@@ -3,6 +3,7 @@
 import copy
 import hashlib
 import json
+import math
 import pathlib
 from datetime import datetime, timezone
 
@@ -27,6 +28,33 @@ SOLVER_TUNING_KEYS = {
     "seed",
 }
 SOLVER_KEYS = set(PROPAGATION_EFFECTS) | SOLVER_TUNING_KEYS
+CONDITION_FIELDS = {
+    "schema_version",
+    "condition_id",
+    "label",
+    "description",
+    "launcher",
+    "scene",
+    "scene_overrides",
+    "placement_mode",
+    "placement_seed",
+    "propagation",
+    "noise",
+    "trajectory",
+    "measurement_profile",
+    "overlay",
+}
+STUDY_FIELDS = {
+    "schema_version",
+    "study_id",
+    "description",
+    "pilot",
+    "parameters",
+    "parameter_files",
+    "conditions",
+    "trials_per_condition",
+    "amf_safety",
+}
 
 
 class ConfigError(ValueError):
@@ -34,12 +62,11 @@ class ConfigError(ValueError):
 
 
 def apply_propagation(scene, propagation):
-    """Apply propagation toggles."""
     merged = copy.deepcopy(scene)
-    solver = dict(merged.get("solver", {}))
+    solver = dict(merged["solver"])
     for effect in PROPAGATION_EFFECTS:
         solver[effect] = False
-    solver.update(propagation or {})
+    solver.update(propagation)
     merged["solver"] = solver
     return merged
 
@@ -64,7 +91,6 @@ def load_json(path):
 
 
 def parse_overrides(items):
-    """Parse dotted command-line overrides."""
     result = {}
     for item in items or []:
         key, separator, raw = str(item).partition("=")
@@ -112,11 +138,9 @@ def source_record(path):
 
 
 def _format_launcher(condition, parameters):
-    launcher = condition.get("launcher")
-    if launcher is None:
-        return
+    launcher = condition["launcher"]
     values = {
-        "ue_number": parameters.get("radio", {}).get("ue_number", 1),
+        "ue_number": parameters["radio"]["ue_number"],
     }
     try:
         condition["launcher"] = str(launcher).format(**values)
@@ -130,18 +154,66 @@ def validate_condition(condition, condition_path, parameters):
     condition_id = condition.get("condition_id")
     if not isinstance(condition_id, str) or not condition_id:
         raise ConfigError("condition_id is required")
-    if not condition.get("scene"):
-        raise ConfigError(f"condition {condition_id} requires a scene")
+    for field in (
+        "launcher",
+        "scene",
+        "trajectory",
+        "measurement_profile",
+        "overlay",
+    ):
+        if not isinstance(condition.get(field), str) or not condition[field]:
+            raise ConfigError(
+                f"condition {condition_id} requires {field}"
+            )
+    unknown_fields = set(condition) - CONDITION_FIELDS
+    if unknown_fields:
+        raise ConfigError(
+            f"condition {condition_id} has unknown fields: "
+            f"{sorted(unknown_fields)}"
+        )
 
-    propagation = condition.get("propagation", {})
+    propagation = condition.get("propagation")
     if not isinstance(propagation, dict):
         raise ConfigError(f"condition {condition_id} propagation must be an object")
     unknown = set(propagation) - SOLVER_KEYS
     if unknown:
         raise ConfigError(f"condition {condition_id} has unknown propagation keys: {sorted(unknown)}")
 
-    if not condition.get("trajectory"):
-        raise ConfigError(f"condition {condition_id} requires a trajectory")
+    if condition.get("placement_mode") not in {"configured", "random"}:
+        raise ConfigError(
+            f"condition {condition_id} requires a valid placement_mode"
+        )
+
+    noise = condition.get("noise", {})
+    if not isinstance(noise, dict):
+        raise ConfigError(f"condition {condition_id} noise must be an object")
+    unknown_noise = set(noise) - {"sigma", "snr_db"}
+    if unknown_noise:
+        raise ConfigError(
+            f"condition {condition_id} has unknown noise keys: "
+            f"{sorted(unknown_noise)}"
+        )
+    if "sigma" in noise and "snr_db" in noise:
+        raise ConfigError(
+            f"condition {condition_id} cannot set sigma and snr_db"
+        )
+    for key, value in noise.items():
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ConfigError(
+                f"condition {condition_id} noise {key} must be numeric"
+            )
+        if not math.isfinite(float(value)):
+            raise ConfigError(
+                f"condition {condition_id} noise {key} must be finite"
+            )
+    if "sigma" in noise and float(noise["sigma"]) < 0.0:
+        raise ConfigError(
+            f"condition {condition_id} noise sigma cannot be negative"
+        )
+    if "sigma" in noise and float(noise["sigma"]) > 10.0:
+        raise ConfigError(
+            f"condition {condition_id} noise sigma cannot exceed 10"
+        )
 
     _format_launcher(condition, parameters)
     return condition
@@ -176,7 +248,7 @@ def resolve_condition(
         resolved["scene_overrides"] = copy.deepcopy(scene_overrides)
 
     profile_path = source_path(
-        condition.get("measurement_profile"),
+        condition["measurement_profile"],
         relative_to=condition_path.parent,
     )
     profile = load_json(profile_path)
@@ -184,6 +256,122 @@ def resolve_condition(
         profile = _deep_merge(profile, profile_overrides)
     if profile.get("schema_version") != 1:
         raise ConfigError(f"unsupported measurement profile: {profile_path}")
+    required_profile = {
+        "attachment_timeout_seconds",
+        "final_ping",
+        "throughput",
+        "amf_interval_seconds",
+        "resource_interval_seconds",
+    }
+    missing_profile = required_profile - set(profile)
+    if missing_profile:
+        raise ConfigError(
+            f"measurement profile is missing {sorted(missing_profile)}"
+        )
+    unknown_profile = set(profile) - required_profile - {
+        "schema_version",
+        "description",
+    }
+    if unknown_profile:
+        raise ConfigError(
+            f"measurement profile has unknown fields: "
+            f"{sorted(unknown_profile)}"
+        )
+    final_ping = profile["final_ping"]
+    if not isinstance(final_ping, dict) or set(final_ping) != {
+        "count",
+        "deadline_seconds",
+        "interval_seconds",
+    }:
+        raise ConfigError(
+            "measurement final_ping requires count, deadline_seconds, "
+            "and interval_seconds"
+        )
+    if (
+        isinstance(final_ping["count"], bool)
+        or not isinstance(final_ping["count"], int)
+        or final_ping["count"] < 1
+    ):
+        raise ConfigError("final ping count must be a positive integer")
+    for key in (
+        "attachment_timeout_seconds",
+        "amf_interval_seconds",
+        "resource_interval_seconds",
+    ):
+        value = profile[key]
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or float(value) <= 0.0
+        ):
+            raise ConfigError(f"measurement {key} must be positive")
+    for key in ("deadline_seconds", "interval_seconds"):
+        value = final_ping[key]
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+            or float(value) <= 0.0
+        ):
+            raise ConfigError(f"final ping {key} must be positive")
+    throughput = profile["throughput"]
+    if not isinstance(throughput, dict):
+        raise ConfigError("measurement throughput must be an object")
+    required_throughput = {
+        "enabled",
+        "duration_seconds",
+        "omit_seconds",
+        "connect_timeout_seconds",
+        "completion_timeout_seconds",
+    }
+    missing_throughput = required_throughput - set(throughput)
+    if missing_throughput:
+        raise ConfigError(
+            "measurement throughput is missing "
+            f"{sorted(missing_throughput)}"
+        )
+    enabled = throughput["enabled"]
+    if not isinstance(enabled, bool):
+        raise ConfigError("measurement throughput enabled must be boolean")
+    duration = throughput["duration_seconds"]
+    omit = throughput["omit_seconds"]
+    connect_timeout = throughput["connect_timeout_seconds"]
+    completion_timeout = throughput["completion_timeout_seconds"]
+    if (
+        isinstance(duration, bool)
+        or not isinstance(duration, (int, float))
+        or not math.isfinite(float(duration))
+        or float(duration) <= 0.0
+    ):
+        raise ConfigError("throughput duration must be finite and positive")
+    if (
+        isinstance(omit, bool)
+        or not isinstance(omit, (int, float))
+        or not math.isfinite(float(omit))
+        or float(omit) < 0.0
+    ):
+        raise ConfigError("throughput omit must be finite and non-negative")
+    if (
+        isinstance(connect_timeout, bool)
+        or not isinstance(connect_timeout, (int, float))
+        or not math.isfinite(float(connect_timeout))
+        or float(connect_timeout) <= 0.0
+    ):
+        raise ConfigError(
+            "throughput connect timeout must be finite and positive"
+        )
+    if (
+        isinstance(completion_timeout, bool)
+        or not isinstance(completion_timeout, (int, float))
+        or not math.isfinite(float(completion_timeout))
+        or float(completion_timeout) <= float(connect_timeout)
+        or float(completion_timeout) <= float(duration) + float(omit)
+    ):
+        raise ConfigError(
+            "throughput completion timeout must exceed connection "
+            "and transfer timeouts"
+        )
     resolved["measurement_profile_resolved"] = {
         "configuration": source_record(profile_path),
         "values": profile,
@@ -197,10 +385,7 @@ def resolve_condition(
 
 
 def _result_root(study, parameters):
-    raw = study.get("result_root") or parameters.get("result_root")
-    if not raw:
-        raise ConfigError("result_root must be provided by the study or benchmark parameters")
-    return resolve_repo_path(raw, repo_root=REPO_ROOT)
+    return resolve_repo_path(parameters["result_root"], repo_root=REPO_ROOT)
 
 
 def validate_study(study, study_path, parameters):
@@ -208,27 +393,54 @@ def validate_study(study, study_path, parameters):
         raise ConfigError("unsupported study schema")
     if not study.get("study_id"):
         raise ConfigError("study_id is required")
+    unknown_fields = set(study) - STUDY_FIELDS
+    if unknown_fields:
+        raise ConfigError(
+            f"study has unknown fields: {sorted(unknown_fields)}"
+        )
+    if not isinstance(study.get("pilot"), bool):
+        raise ConfigError("study pilot must be boolean")
     result_root = _result_root(study, parameters)
-    if parameters.get("results_must_be_outside_repo", True):
+    if parameters["results_must_be_outside_repo"]:
         if REPO_ROOT == result_root or REPO_ROOT in result_root.parents:
             raise ConfigError("generated results must be outside the Git repository")
     references = study.get("conditions")
-    if not isinstance(references, list):
-        raise ConfigError("study conditions must be a list")
+    if not isinstance(references, list) or not references:
+        raise ConfigError("study conditions must be a non-empty list")
     trials = study.get("trials_per_condition")
-    if not isinstance(trials, int) or isinstance(trials, bool) or trials < 0:
-        raise ConfigError("trials_per_condition must be a non-negative integer")
-    if references and trials < 1:
-        raise ConfigError("trials_per_condition must be positive when conditions are configured")
-    if not references and trials != 0:
-        raise ConfigError("trials_per_condition must be zero when no conditions are configured")
-    study_policy = parameters.get("study", {})
-    if study.get("pilot") and study_policy.get("enforce_pilot_single_trial") and trials != 1:
+    if (
+        not isinstance(trials, int)
+        or isinstance(trials, bool)
+        or not 1 <= trials <= 31
+    ):
+        raise ConfigError("trials_per_condition must be in 1..31")
+    if study["pilot"] and trials != 1:
         raise ConfigError("pilot trial count does not match benchmark parameters")
-    if not isinstance(study.get("baseline_policy", {}), dict):
-        raise ConfigError("baseline_policy must be an object")
-    if not isinstance(study.get("amf_safety", {}), dict):
+    safety = study.get("amf_safety")
+    if not isinstance(safety, dict):
         raise ConfigError("amf_safety must be an object")
+    required_safety = {
+        "stop_at_growth_bytes",
+        "warn_at_growth_bytes",
+        "stop_at_limit_fraction",
+        "warn_at_limit_fraction",
+    }
+    if set(safety) != required_safety:
+        raise ConfigError(
+            "amf_safety must contain exactly "
+            f"{sorted(required_safety)}"
+        )
+    for key, value in safety.items():
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(float(value))
+        ):
+            raise ConfigError(f"AMF safety {key} must be numeric")
+    if not 0 <= safety["warn_at_growth_bytes"] < safety["stop_at_growth_bytes"]:
+        raise ConfigError("AMF memory growth thresholds are invalid")
+    if not 0.0 <= safety["warn_at_limit_fraction"] < safety["stop_at_limit_fraction"] <= 1.0:
+        raise ConfigError("AMF memory limit thresholds are invalid")
     return result_root
 
 
@@ -269,8 +481,7 @@ def load_and_resolve_study(
         parameters = load_benchmark_parameters(*files, inline=inline)
     except (OSError, ValueError, json.JSONDecodeError) as error:
         raise ConfigError(f"could not load benchmark parameters: {error}") from error
-    if isinstance(study.get("amf_safety"), dict):
-        parameters["amf_safety"] = copy.deepcopy(study["amf_safety"])
+    parameters["amf_safety"] = copy.deepcopy(study["amf_safety"])
     result_root = validate_study(study, study_path, parameters)
     conditions = [
         resolve_condition(

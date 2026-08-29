@@ -34,3 +34,14 @@ slicing:
     sd: 000001
   - sst: 2
     sd: 000002
+
+metrics:
+  enable_json_metrics: true
+  addr: 127.0.0.1
+  port: 55555
+  autostart_stdout_metrics: false
+
+log:
+  filename: /tmp/evaluation-gnb-scheduler.log
+  all_level: warning
+  mac_level: info

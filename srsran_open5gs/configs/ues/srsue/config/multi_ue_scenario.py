@@ -92,6 +92,7 @@ def main():
     signal.signal(signal.SIGTERM, request_stop)
 
     flowgraph.start()
+    print("Baseline SISO channel ready", flush=True)
     try:
         stop_event.wait()
     finally:

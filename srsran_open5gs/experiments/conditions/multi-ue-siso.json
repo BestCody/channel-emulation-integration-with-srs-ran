@@ -1,15 +1,12 @@
 {
   "schema_version": 1,
-  "condition_id": "live-siso",
-  "label": "Moving SISO live channel",
-  "description": "Moving SISO ray-traced channel",
+  "condition_id": "multi-ue-siso",
+  "label": "Two independent SISO UEs",
+  "description": "Two UEs with independent ray-traced channels",
   "launcher": "/srsran/config/start_gnu_live_channel.sh {ue_number}",
   "scene": "channel_emulation/scenes/default_scene.json",
   "placement_mode": "random",
-  "propagation": {
-    "los": true,
-    "specular_reflection": true
-  },
+  "propagation": {"los": true, "specular_reflection": true},
   "trajectory": "channel_emulation/trajectories/default_trajectory.json",
   "measurement_profile": "../measurement-profiles/live-link.json",
   "overlay": "configs/ues/srsue-live"

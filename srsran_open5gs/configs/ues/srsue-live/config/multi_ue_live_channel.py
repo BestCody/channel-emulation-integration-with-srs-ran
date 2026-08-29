@@ -24,6 +24,7 @@ class MultiUeLiveChannel(gr.top_block):
         num_ues,
         sample_rate,
         control_bind,
+        stream_bind,
     ):
         gr.top_block.__init__(self, "srsRAN live sparse channel")
         if num_ues < 1:
@@ -121,6 +122,7 @@ class MultiUeLiveChannel(gr.top_block):
             downlinks=self.downlink_channels,
             uplinks=self.uplink_channels,
             sample_rate=sample_rate,
+            stream_endpoint=stream_bind,
         )
         print(
             f"Live SISO channel enabled for {num_ues} UE(s); "
@@ -146,8 +148,9 @@ def parse_args():
     parser.add_argument("--sample-rate", type=float, required=True)
     parser.add_argument(
         "--control-bind",
-        default="tcp://0.0.0.0:5555",
+        required=True,
     )
+    parser.add_argument("--stream-bind", required=True)
     args = parser.parse_args()
     if args.num_ues < 1:
         parser.error("--num-ues must be at least one")
@@ -164,6 +167,7 @@ def main():
         args.num_ues,
         args.sample_rate,
         args.control_bind,
+        args.stream_bind,
     )
     stop_event = threading.Event()
 

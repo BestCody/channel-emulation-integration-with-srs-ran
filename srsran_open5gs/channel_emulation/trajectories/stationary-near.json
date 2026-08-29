@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "name": "stationary-near",
+  "update_interval_ms": 1000,
+  "points": [
+    {"index": 0, "time_ms": 0, "position": [0.0, 0.0, 1.5], "velocity": [0.0, 0.0, 0.0], "speed_mps": 0.0},
+    {"index": 1, "time_ms": 1000, "position": [0.0, 0.0, 1.5], "velocity": [0.0, 0.0, 0.0], "speed_mps": 0.0}
+  ]
+}

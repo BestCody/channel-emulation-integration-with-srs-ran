@@ -11,4 +11,5 @@ SAMPLE_RATE="$(
 exec python3 -u /srsran/config/multi_ue_live_channel.py \
   --num-ues "$NUM_UES" \
   --sample-rate "$SAMPLE_RATE" \
-  --control-bind tcp://0.0.0.0:5555
+  --control-bind tcp://0.0.0.0:5555 \
+  --stream-bind tcp://0.0.0.0:5556
